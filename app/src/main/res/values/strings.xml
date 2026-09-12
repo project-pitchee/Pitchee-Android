@@ -1,0 +1,36 @@
+<resources>
+    <string name="app_name">Pitchee</string>
+
+    <string name="nav_pitch">实时基频</string>
+    <string name="nav_analysis">声音分析</string>
+    <string name="nav_about">关于</string>
+
+    <string name="pitch_title">实时基频</string>
+    <string name="pitch_subtitle">观察说话过程中的音高变化</string>
+    <string name="pitch_coming_soon">即将开放</string>
+    <string name="pitch_coming_soon_body">实时检测将在后续版本接入。届时先授予麦克风权限，再开始练习即可看到实时基频曲线。</string>
+    <string name="pitch_permission_title">需要麦克风权限</string>
+    <string name="pitch_permission_body">实时功能只会在你主动开启后使用麦克风，音频在本机处理，不会上传。</string>
+    <string name="analysis_inference_title">推理你的声音</string>
+    <string name="analysis_powered_by">Power by PitcheeCore C++</string>
+    <string name="click_to_record">点击开始录制</string>
+    <string name="recording_elapsed">正在录音 · %1$.1f 秒</string>
+    <string name="analysis_phase_audio">正在读取录音…</string>
+    <string name="analysis_phase_models">正在加载模型…</string>
+    <string name="analysis_phase_inference">正在运行模型分析…</string>
+    <string name="analysis_phase_finishing">正在整理结果…</string>
+    <string name="start_recording">开始录音</string>
+    <string name="stop_and_analyze">停止并分析</string>
+    <string name="record_permission_denied">需要麦克风权限才能录音和分析</string>
+    <string name="analysis_failed">分析失败</string>
+
+    <string name="about_title">关于 Pitchee</string>
+    <string name="about_subtitle">设备端声音训练与趋势观察工具</string>
+    <string name="about_version">版本 %1$s</string>
+    <string name="about_privacy_title">隐私</string>
+    <string name="about_privacy_body">录音和模型推理全部在设备本地完成。Pitchee 不会上传你的录音，也不要求创建账号。</string>
+    <string name="about_engine_title">分析引擎</string>
+    <string name="about_engine_body">PitcheeCore 0.1.0 · ONNX Runtime 1.24.2 · 模型版本 2026‑09</string>
+    <string name="about_disclaimer_title">使用说明</string>
+    <string name="about_disclaimer_body">分数用于训练反馈和趋势观察，不应作为性别身份鉴定、医疗诊断或其他高风险决策的依据。</string>
+</resources>

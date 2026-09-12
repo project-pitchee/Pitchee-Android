@@ -1,0 +1,318 @@
+# Pitchee-core Android 集成记录
+
+## 1. 集成基线
+
+- 上游仓库：`https://github.com/project-pitchee/Pitchee-core`
+- 集成提交：`fdc6a93dd2274bb475320ff1a00cd71e8deec084`
+- 上游版本：PitcheeCore `0.1.0`
+- 模型版本：`2026-09`
+- ONNX Runtime：Android `1.24.2`
+- Android NDK：`26.3.11579264`
+- CMake：`3.22.1`
+- 最低 Android API：24
+- 当前打包 ABI：`arm64-v8a`、`x86_64`
+
+上游源码和模型被放在 `third_party/Pitchee-core/`。本次从 `18e13c8` 更新到
+`fdc6a93`，包含自然度 PCM16 管线对齐、JSON schema 2、F0/VFP/自然度源音频
+时间轴窗口，以及 VFP 跨 VAD 片段映射。模型文件哈希未变化，C ABI 只有参数名
+调整，JNI 函数签名保持不变。上游项目没有 Git tag，因此提交号是当前唯一可
+复现的版本标识。
+
+## 2. 工程结构
+
+```text
+app/src/main/
+├── cpp/
+│   ├── CMakeLists.txt                 # Android NDK 构建入口
+│   └── PitcheeCoreJNI.cpp             # Kotlin <-> C ABI JNI 桥
+├── java/io/rovly/pitchee/
+│   ├── data/
+│   │   ├── PitcheeRepository.kt       # 对上层公开的 Kotlin 集成接口
+│   │   ├── AudioRecorder.kt            # MediaRecorder 录音
+│   │   ├── AudioFileDecoder.kt         # Uri -> Float32 PCM
+│   │   ├── RecordedAudio.kt            # 波形摘要与录音文件
+│   │   ├── FeminineTimeline.kt         # VFP 时间窗 -> 原录音时间轴
+│   │   ├── PitcheeResult.kt            # 强类型 JSON 契约
+│   │   └── PcmAudio.kt
+│   ├── ui/
+│   │   ├── PitcheeApp.kt               # Compose 三页界面与底部导航
+│   │   ├── AudioTimeline.kt            # 波形、播放、缩放和拖拽
+│   │   ├── ScoreResult.kt              # 综合分、规则和短板卡片
+│   │   ├── ScoreInsight.kt             # 评分规则解释和瓶颈判断
+│   │   ├── RecordViewModel.kt          # 录音和分析状态
+│   │   └── theme/PitcheeTheme.kt       # 深粉色 Material 3 配色
+│   └── MainActivity.kt                 # Compose 宿主
+└── java/space/pitchee/core/
+    └── PitcheeAnalyzer.kt              # PitcheeCore JNI 封装
+
+third_party/Pitchee-core/               # 上游 C++、JNI 示例、模型和许可证
+```
+
+MVVM 对应关系：
+
+- **Model**：`PitcheeRepository`、`AudioRecorder`、`AudioFileDecoder`、`PitcheeResult`
+- **ViewModel**：`RecordViewModel`
+- **View**：`PitcheeApp.kt`、`MainActivity.kt` 和三个 Compose 目的地
+
+没有引入 Hilt/Koin 等 DI 框架。当前只有一个 Repository 和一个 ViewModel，
+直接使用 `ViewModelProvider.Factory` 已足够；出现多页面、多数据源后再增加 DI。
+
+## 3. Kotlin 集成接口
+
+公开入口：
+
+```kotlin
+val repository = PitcheeRepository(context)
+```
+
+分析用户选择的音频文件：
+
+```kotlin
+val result = repository.analyze(
+    uri = contentUri,
+    maxSeconds = 20,
+    onPhase = { phase ->
+        // LOADING_AUDIO / PREPARING_MODELS / ANALYZING / COMPLETED
+    },
+)
+```
+
+分析调用方已有的 Float32 PCM：
+
+```kotlin
+val result = repository.analyzePcm(
+    samples = interleavedSamples, // [-1, 1]
+    sampleRate = 48_000,
+    channels = 2,
+)
+```
+
+不再使用时关闭 native analyzer：
+
+```kotlin
+repository.close()
+```
+
+`analyze` 在 IO 线程解码音频，`analyzePcm` 在 CPU 线程执行模型推理。
+Repository 会串行化 native 调用，因为同一个 `pitchee_analyzer_t` 不能并发使用。
+
+返回类型为 `PitcheeResult`，包含：
+
+- `audio`：源采样率、声道数、输入和实际分析时长
+- `vad`：语音区间
+- `f0`：平均 F0、标准差、0.1 秒时间窗
+- `vfp`：VFP 标准分和源音频时间轴窗口
+- `naturalness`：整段自然度分和局部自然度窗口
+- `composite`：规则处理前后的综合分
+- `rawJson`：完整上游 JSON，便于升级时排查字段兼容性
+
+## 4. 集成时遇到的问题
+
+### 4.1 上游没有 Android Maven 依赖
+
+`Pitchee-core` 是 C++17/CMake 项目，只提供 Android JNI 示例，没有发布
+GitHub Release、AAR 或 Maven 坐标，不能直接写：
+
+```kotlin
+implementation("...:pitchee-core:...")
+```
+
+处理方式：保留上游源码，在 `app/src/main/cpp/CMakeLists.txt` 中以
+`add_subdirectory` 方式构建，并额外生成 `libpitchee_core_jni.so`。
+
+### 4.2 ONNX Runtime 必须单独提供
+
+PitcheeCore 只定义 `PITCHEE_ORT_INCLUDE_DIR` 和
+`PITCHEE_ORT_LIBRARY`，不会下载或打包 ONNX Runtime。
+
+处理方式：使用官方
+`com.microsoft.onnxruntime:onnxruntime-android:1.24.2` AAR。该 AAR 虽然包含
+头文件和四种 ABI 的 `libonnxruntime.so`，但没有 Prefab 配置，CMake 无法
+通过 `find_package` 直接发现它。因此 Gradle 中增加了
+`prepareOnnxRuntime` 任务，在编译 native 代码前自动提取头文件和当前 ABI
+的 library。ONNX Runtime 必须与上游验证版本保持一致，不能随意升级。
+
+### 4.3 模型路径不是 Android Asset 路径
+
+PitcheeCore 通过普通文件路径读取 ONNX 模型，不能直接读取
+`asset://` 或压缩资源流。
+
+处理方式：首次使用 `PitcheeRepository` 时，将模型从 APK Asset 复制到
+`context.noBackupFilesDir/pitchee-models/`，再将目录路径传给 native 层。
+使用 `noBackupFilesDir` 是为了避免约 45 MB 模型进入 Android 自动备份；
+`.ready` 文件记录模型版本，后续启动不会重复复制。
+
+### 4.4 APK 体积和 ABI
+
+完整模型约 45 MB，ONNX Runtime 单 ABI 约 25 至 31 MB。最初验证的全 ABI
+Debug APK 约 106 MB。若加入 `armeabi-v7a` 和 `x86`，体积还会明显增加。
+
+处理方式：当前只构建和打包 `arm64-v8a`、`x86_64`。前者覆盖现代真机，
+后者覆盖常见模拟器。若发布时不需要模拟器，只保留 `arm64-v8a` 可继续减小
+APK。
+
+### 4.5 Android 15+ 的 16 KB 页对齐
+
+上游 CMake 默认链接出的 `libpitchee_core.so` 和 JNI library 是 4 KB
+`LOAD` 段对齐，而当前项目 `targetSdk` 为 37。部分 Android 15+ 设备使用
+16 KB 内存页，未对齐的 native library 可能无法加载。
+
+处理方式：Android CMake 中对两个自建 `.so` 增加：
+
+```text
+-Wl,-z,max-page-size=16384
+```
+
+构建后已确认 `libpitchee_core.so`、`libpitchee_core_jni.so` 的 `LOAD`
+段对齐为 `0x4000`。ONNX Runtime 1.24.2 自带 library 也已经是 `0x4000`。
+
+### 4.6 同一个 Analyzer 不能并发调用
+
+上游 C API 明确要求同一个 analyzer 的调用必须串行化，或为每个并发 worker
+创建独立 analyzer。Android 示例本身没有处理这个问题。
+
+处理方式：`PitcheeAnalyzer` 对 `analyze/close` 使用同步保护，
+`PitcheeRepository` 使用同一把锁串行化整个 native 生命周期。当前没有增加
+analyzer 池；只有出现多任务并行分析需求时才需要池化。
+
+### 4.7 长音频不再由 Core 截断
+
+上游 `18e13c8` 移除了 `kMaximumSeconds = 20.0`，Core 现在会分析完整输入，
+并使用多相 Kaiser 滤波器重采样到 16 kHz。长音频不再被 Core 静默截断，但会
+带来更高的内存与计算时间，需要由调用方按产品场景控制时长。
+
+处理方式：`PitcheeRepository.decode/analyze` 默认不再传入时长上限，以匹配
+新版 Core。录音界面仍保留 20 秒自动停止，这是移动端交互限制，不是 Core
+限制；如果调用方已有 Float32 PCM，也应自行评估 buffer 大小和等待时间。
+
+### 4.8 Android 音频格式差异
+
+PitcheeCore 只接收 Float32 PCM，而用户选择的是压缩或容器音频。
+Android 的 `MediaCodec` 输出编码和格式可能因设备、编解码器而不同。
+
+处理方式：`AudioFileDecoder` 支持：
+
+- `audio/raw`：直接从 `MediaExtractor` 读取
+- 其他音轨：使用 `MediaCodec` 解码
+- 解码输出：PCM 16-bit 或 PCM Float
+
+当前不支持解码器输出 PCM 24-bit 等格式。遇到时抛出明确错误，不让错误数据
+进入模型计算。
+
+### 4.9 UI 初始状态和测试缺失
+
+原工程 `MainActivity` 是空页面，Manifest 也没有 LAUNCHER intent-filter，
+即使完成 native 集成也无法直接启动验证。
+
+处理方式：改造为 Jetpack Compose Material 3 应用壳，提供“实时基频 / 声音分析 /
+关于”三个底部导航目的地；补上 `MAIN/LAUNCHER`。实时基频暂时保持“即将开放”，
+不会提前申请权限。声音分析页使用 `RECORD_AUDIO` 和 `MediaRecorder`，录音停止后
+直接交给 Repository 分析。
+
+### 4.10 许可证风险
+
+上游 `Pitchee-core` 使用 GPL-3.0。把它作为同一个 Android 应用的一部分构建
+和分发，通常会影响整个应用的许可证与源码分发义务，需要法务确认。
+
+此外，上游只为 `SwiftF0.onnx` 提供了独立许可证；`ECAPA`、`VFPHead`、
+`Naturalness`、`SileroVAD` 的模型许可和训练数据来源没有在仓库中逐项说明。
+
+这不是代码问题，也不会由 Gradle 构建报错，但在发布或商业化前必须解决。
+若应用不能采用 GPL-3.0，需要重新评估独立进程、动态下载方案是否足够，或
+替换为许可兼容的推理库/模型。
+
+### 4.11 Debug 原生代码未优化导致推理极慢
+
+Android CMake 的 Debug 配置默认不优化 C++。实测同一个约 8.5 秒 AAC 语音在
+模拟器上需要约 44 秒才能完成推理，界面虽然最终会显示结果，但很容易被理解
+成“预测后没有结果”。
+
+处理方式：Debug 构建中仅为 `pitchee_core` 和 `pitchee_core_jni` 增加 `-O2`，
+保留调试符号和 Kotlin 调试能力。优化后同一设备测试总耗时降到约 5 至 14 秒。
+Release 构建原本已经是优化构建。
+
+### 4.12 录音和 Compose 集成
+
+声音分析需要 `RECORD_AUDIO`。当前使用 `MediaRecorder` 生成 AAC/M4A，最长录制
+20 秒并自动停止，然后由 `AudioFileDecoder -> PitcheeCore` 处理。权限只在用户
+点击“开始录音”时申请，未录音时不会占用麦克风。录音过程中轮询
+`MediaRecorder.maxAmplitude` 绘制实时波形。采样间隔为 16 ms，并对相邻峰值做
+轻度平滑，避免仅以 10 FPS 刷新造成卡顿；波形使用固定幅度，不按当前窗口自动
+归一化，新采样从右侧进入并向左滚动。停止后解码 PCM，生成固定数量峰值桶用于
+缩放显示，同时保留 M4A 文件给 `MediaPlayer` 播放。
+
+schema 2 中 `f0.windows`、`vfp.windows`、`naturalness.windows` 都直接提供源音频
+时间轴位置，不再需要在 Android 侧反向映射 VAD 拼接时间。`FeminineTimeline`
+按时间桶加权合并重叠 VFP 窗口、局部自然度窗口和 F0 窗口，并复刻综合分公式与
+封顶规则，生成时间级综合指数；没有 VFP 覆盖或不属于 VAD 语音段的区间保留为
+灰色。
+
+时间轴支持点击定位、单指/双指平移、手势缩放以及按钮缩放。播放头下方显示当前
+时间桶的局部综合指数；它由当前覆盖该时间桶的 VFP、自然度和 F0 窗口计算，并
+应用同一套连续分和封顶规则，但整段聚合自然度可能与局部值不同。
+
+界面采用 Compose Material 3，品牌主题固定为深粉色，不启用动态色，避免系统
+壁纸覆盖品牌色。声音分析页在结果生成前只保留标题、圆键、状态文案和底部
+PitcheeCore 标识；录音键在空闲、录音和分析状态之间使用尺寸、颜色、缩放和
+内容切换动画。实时基频页目前只提供占位状态；后续接入时应复用同一权限流程，
+并把实时计算与批量模型分析分开，避免长时间占用推理线程。
+
+### 4.13 综合分规则解释
+
+综合分和封顶逻辑直接复刻自 `src/scoring.cpp`，界面会显示基础连续分、规则限制、
+最终得分和实际压低分值。具体规则包括：
+
+- `pass_boost`：满足高 F0、高自然度、标准音色分门槛时提升到 60–100 区间。
+- `high_f0_stylized_cap`：F0 高但自然度低，最高 45。
+- `low_f0_natural_cap`：自然度达标但 F0 不高于 165 Hz，最高 59。
+- `low_f0_stylized_cap`：F0 和自然度都偏低，最高 20。
+- `high_f0_male_cap`：F0 达标但模型音色标准分低于 50，最高 59。
+- `f0_unavailable`：没有可靠 F0，直接使用标准音色分。
+
+“最需要改善”卡片根据命中的规则和连续评分中的最低组成项给出一个明确短板，
+对应指标会显示“重点”标记，避免只给出一个没有解释的总分。
+
+### 4.14 推理进度和 Android 硬件加速
+
+上游 C ABI 有 phase callback。当前 JNI 已把它桥接到 Kotlin，用于驱动分析状态；
+声音分析页在结果前只显示动画录音键和波形，分析阶段不再堆叠文字卡片，而是用
+按钮进度环表达。`AudioFileDecoder` 还增加了 60 秒超时，避免损坏音频导致永久
+停留在“分析中”。
+
+Android 版本目前没有启用 NNAPI 等 execution provider，仍使用 CPU。
+需要硬件加速时，需要先验证 ONNX Runtime Android 的 NNAPI/其他 provider
+与所有模型算子兼容性。
+
+## 5. 已验证内容
+
+当前环境已执行并通过：
+
+```bash
+./gradlew :app:assembleDebug
+./gradlew :app:testDebugUnitTest
+./gradlew :app:connectedDebugAndroidTest
+```
+
+验证结果：
+
+- `arm64-v8a`、`x86_64` 两套 C++/JNI 均完成编译和链接
+- APK 中包含 `libonnxruntime.so`、`libpitchee_core.so`、
+  `libpitchee_core_jni.so`
+- APK 中包含全部六个 ONNX 模型和 `manifest.json`
+- 两个自建 native library 已检查为 16 KB 页对齐
+- 单元测试通过强类型 JSON 契约解析
+- Android API 32 arm64 模拟器上通过 native 模型加载、Float32 PCM 分析和
+  静音 WAV 文件分析；静音按预期被 VAD 以 `no speech` 拒绝
+- 通过 8.5 秒 AAC 合成语音的完整 `Uri -> MediaCodec -> PitcheeCore ->
+  PitcheeResult` 成功路径，验证综合分位于 `0..100` 且 VFP 窗口数大于 0
+- 验证 Kotlin 可以收到 native `ANALYZING` 和 `COMPLETED` 阶段回调
+- 优化 Debug 原生构建后，schema 2 完整成功路径约 5 秒；同一测试语音因重采样
+  和自然度管线修复，综合分由最初版本约 `46.78` 变为 `45.26`
+- 在 Android API 32 arm64 模拟器上手动验证了麦克风权限、录音、停止分析、
+  深粉色 Material 3 三页导航和 About 页面
+- 手动验证录音过程实时波形、录音后播放、时间轴缩放，以及五色指数和灰色无语音区间
+- 手动验证综合分圆环、封顶路径、命中规则、短板建议和重点指标标记
+- 手动验证新版录音页仅保留圆形录音键、红色停止键动画、右侧进入的固定幅度波形
+
+自动测试中的语音是由 macOS `say` 生成的合成测试音频，只用于验证接口和
+数据链路，不代表评分模型的质量或业务阈值。

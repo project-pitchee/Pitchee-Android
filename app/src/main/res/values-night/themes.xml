@@ -1,0 +1,12 @@
+<resources>
+    <style name="Theme.Pitchee" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/pitchee_pink_light</item>
+        <item name="colorPrimaryVariant">@color/pitchee_pink_dark</item>
+        <item name="colorOnPrimary">#FF5E0030</item>
+        <item name="colorSecondary">#FFE4BDC7</item>
+        <item name="colorSecondaryVariant">#FFEFB8CA</item>
+        <item name="colorOnSecondary">#FF432A32</item>
+        <item name="android:statusBarColor">@color/pitchee_pink_dark</item>
+        <item name="android:navigationBarColor">#FF191113</item>
+    </style>
+</resources>
