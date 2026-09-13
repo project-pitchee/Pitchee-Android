@@ -1,6 +1,7 @@
 package io.rovly.pitchee.ui
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.net.Uri
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
@@ -55,10 +56,14 @@ sealed interface RecordUiState {
 class RecordViewModel(
     private val repository: PitcheeRepository,
     private val recorder: AudioRecorder,
+    private val scoreHistory: SharedPreferences,
 ) : ViewModel() {
     private var timerJob: Job? = null
     private var retainedAudio: RecordedAudio? = null
-    private var lastResultScore: Double? = null
+    private var lastResultScore: Double? = scoreHistory
+        .getFloat(KEY_LAST_RESULT_SCORE, NO_PREVIOUS_SCORE)
+        .takeUnless { it == NO_PREVIOUS_SCORE }
+        ?.toDouble()
 
     private val mutableState = MutableStateFlow<RecordUiState>(RecordUiState.Ready)
     val state: StateFlow<RecordUiState> = mutableState.asStateFlow()
@@ -150,6 +155,9 @@ class RecordViewModel(
                 } else {
                     val previousScore = lastResultScore
                     lastResultScore = result.composite.finalScore
+                    scoreHistory.edit()
+                        .putFloat(KEY_LAST_RESULT_SCORE, result.composite.finalScore.toFloat())
+                        .apply()
                     mutableState.value = RecordUiState.Analyzing(
                         phase = PitcheePhase.COMPLETED,
                         progress = PitcheeProgress(
@@ -211,6 +219,9 @@ class RecordViewModel(
         const val MINIMUM_SPEECH_SECONDS = 5.0
         private const val TIMER_INTERVAL_MS = 16L
         private const val COMPLETION_HOLD_MS = 900L
+        private const val SCORE_HISTORY_NAME = "score_history"
+        private const val KEY_LAST_RESULT_SCORE = "last_result_score"
+        private const val NO_PREVIOUS_SCORE = -1f
 
         fun factory(context: Context): ViewModelProvider.Factory = viewModelFactory {
             initializer {
@@ -218,6 +229,10 @@ class RecordViewModel(
                 RecordViewModel(
                     repository = PitcheeRepository(appContext),
                     recorder = AudioRecorder(appContext),
+                    scoreHistory = appContext.getSharedPreferences(
+                        SCORE_HISTORY_NAME,
+                        Context.MODE_PRIVATE,
+                    ),
                 )
             }
         }
