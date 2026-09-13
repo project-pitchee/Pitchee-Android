@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -39,6 +40,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -210,6 +212,7 @@ private fun RecordAnalysisScreen() {
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val permissionDeniedMessage = stringResource(R.string.record_permission_denied)
+    var showingRules by rememberSaveable { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -224,6 +227,7 @@ private fun RecordAnalysisScreen() {
     }
 
     fun startRecording() {
+        showingRules = false
         val granted = ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.RECORD_AUDIO,
@@ -246,25 +250,33 @@ private fun RecordAnalysisScreen() {
                         durationSeconds = current.audio.durationSeconds,
                     )
                 }
-                ScreenColumn {
-                    ScoreResultContent(
+                if (showingRules) {
+                    ScoreRulesPage(
                         result = current.result,
-                        previousScore = current.previousScore,
-                    ) {
-                        RecordedAudioTimeline(
-                            audio = current.audio,
-                            timeline = timeline,
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    TextButton(
-                        onClick = {
-                            viewModel.reset()
-                            startRecording()
-                        },
-                        modifier = Modifier.align(Alignment.CenterHorizontally),
-                    ) {
-                        Text("重新录音")
+                        onBack = { showingRules = false },
+                    )
+                } else {
+                    ScreenColumn {
+                        ScoreResultContent(
+                            result = current.result,
+                            previousScore = current.previousScore,
+                            onOpenRules = { showingRules = true },
+                        ) {
+                            RecordedAudioTimeline(
+                                audio = current.audio,
+                                timeline = timeline,
+                            )
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        TextButton(
+                            onClick = {
+                                viewModel.reset()
+                                startRecording()
+                            },
+                            modifier = Modifier.align(Alignment.CenterHorizontally),
+                        ) {
+                            Text("重新录音")
+                        }
                     }
                 }
             }
@@ -317,6 +329,29 @@ private fun RecordAnalysisScreen() {
                 .align(Alignment.BottomCenter)
                 .padding(16.dp),
         )
+    }
+}
+
+@Composable
+private fun ScoreRulesPage(
+    result: io.rovly.pitchee.data.PitcheeResult,
+    onBack: () -> Unit,
+) {
+    BackHandler(onBack = onBack)
+    ScreenColumn {
+        TextButton(
+            onClick = onBack,
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+        ) {
+            Text("返回结果")
+        }
+        Spacer(Modifier.height(8.dp))
+        ScreenHeader(
+            title = "评分规则",
+            subtitle = "综合分公式、封顶与提升条件",
+        )
+        Spacer(Modifier.height(20.dp))
+        ScoreRuleCard(result)
     }
 }
 

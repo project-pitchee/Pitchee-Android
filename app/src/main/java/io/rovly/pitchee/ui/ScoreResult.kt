@@ -1,5 +1,10 @@
 package io.rovly.pitchee.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
@@ -25,9 +30,14 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,6 +59,7 @@ import kotlinx.coroutines.delay
 internal fun ScoreResultContent(
     result: PitcheeResult,
     previousScore: Double? = null,
+    onOpenRules: () -> Unit = {},
     timeline: @Composable () -> Unit = {},
 ) {
     val insight = remember(result) { ScoreInsight.from(result) }
@@ -60,16 +71,15 @@ internal fun ScoreResultContent(
     )
     Spacer(Modifier.height(12.dp))
     if (insight.hasBottleneck) {
-        BottleneckCard(insight)
+        BottleneckCard(insight, onOpenRules)
+        Spacer(Modifier.height(12.dp))
     } else if (score > 60.0) {
-        PassCard()
+        PassCard(onOpenRules)
+        Spacer(Modifier.height(12.dp))
     }
+    MetricsCard(result, insight)
     Spacer(Modifier.height(16.dp))
     timeline()
-    Spacer(Modifier.height(12.dp))
-    RuleCard(result, insight)
-    Spacer(Modifier.height(12.dp))
-    MetricsCard(result, insight)
 }
 
 @Composable
@@ -141,20 +151,59 @@ internal fun ScoreIndexChart(
 }
 
 @Composable
-private fun PassCard() {
-    val containerColor = Color(0xFFDDF6E4)
-    val contentColor = Color(0xFF116B3A)
+private fun PassCard(onOpenRules: () -> Unit) {
+    InsightCard(
+        label = "评估结果",
+        title = "你的声音很pass",
+        description = "本次没有触发主要短板规则。",
+        containerColor = Color(0xFFDDF6E4),
+        contentColor = Color(0xFF116B3A),
+        onOpenRules = onOpenRules,
+    )
+}
+
+@Composable
+private fun InsightCard(
+    label: String,
+    title: String,
+    description: String,
+    containerColor: Color,
+    contentColor: Color,
+    onOpenRules: () -> Unit,
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = containerColor),
     ) {
-        Text(
-            text = "你的声音很pass",
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 22.dp),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = contentColor,
-        )
+        Column(Modifier.padding(20.dp)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                color = contentColor.copy(alpha = 0.72f),
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = contentColor,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = contentColor,
+            )
+            TextButton(
+                onClick = onOpenRules,
+            ) {
+                Text(
+                    text = "查看评分规则",
+                    color = contentColor,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
     }
 }
 
@@ -321,6 +370,12 @@ private fun RuleCard(result: PitcheeResult, insight: ScoreInsight) {
 }
 
 @Composable
+internal fun ScoreRuleCard(result: PitcheeResult) {
+    val insight = remember(result) { ScoreInsight.from(result) }
+    RuleCard(result, insight)
+}
+
+@Composable
 private fun ScorePath(
     baseScore: Double,
     cap: Double?,
@@ -371,7 +426,10 @@ private fun ScoreStage(
 }
 
 @Composable
-private fun BottleneckCard(insight: ScoreInsight) {
+private fun BottleneckCard(
+    insight: ScoreInsight,
+    onOpenRules: () -> Unit,
+) {
     val containerColor = if (insight.ruleState == ScoreRuleState.CAPPED) {
         MaterialTheme.colorScheme.errorContainer
     } else {
@@ -383,83 +441,90 @@ private fun BottleneckCard(insight: ScoreInsight) {
         MaterialTheme.colorScheme.onTertiaryContainer
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = containerColor),
-    ) {
-        Column(Modifier.padding(20.dp)) {
-            Text(
-                text = "主要短板",
-                style = MaterialTheme.typography.labelLarge,
-                color = contentColor.copy(alpha = 0.72f),
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = insight.bottleneckTitle,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = contentColor,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = insight.bottleneckDescription,
-                style = MaterialTheme.typography.bodyMedium,
-                color = contentColor,
-            )
-        }
-    }
+    InsightCard(
+        label = "主要短板",
+        title = insight.bottleneckTitle,
+        description = insight.bottleneckDescription,
+        containerColor = containerColor,
+        contentColor = contentColor,
+        onOpenRules = onOpenRules,
+    )
 }
 
 @Composable
 private fun MetricsCard(result: PitcheeResult, insight: ScoreInsight) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
     val standard = result.vfp.standardScore
     val naturalness = result.naturalness.score
     val f0 = result.f0.meanHz
     val f0Score = f0?.let { min(100.0, max(0.0, (it - 110.0) / 90.0 * 100.0)) }
 
     Card(
+        onClick = { expanded = !expanded },
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
         ),
     ) {
-        Column(Modifier.padding(20.dp)) {
-            Text(
-                text = "指标",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.height(14.dp))
-            MetricRow(
-                label = "标准音色",
-                value = "%.1f".format(standard),
-                progress = (standard / 100.0).toFloat(),
-                highlighted = insight.bottleneckTitle.contains("音色"),
-                score = standard,
-            )
-            Spacer(Modifier.height(14.dp))
-            MetricRow(
-                label = "自然度",
-                value = "%.1f".format(naturalness),
-                progress = (naturalness / 100.0).toFloat(),
-                highlighted = insight.bottleneckTitle.contains("自然度"),
-                score = naturalness,
-            )
-            Spacer(Modifier.height(14.dp))
-            MetricRow(
-                label = "平均 F0",
-                value = f0?.let { "%.0f Hz".format(it) } ?: "未检测到",
-                progress = f0Score?.div(100.0)?.toFloat() ?: 0f,
-                highlighted = insight.bottleneckTitle.contains("F0") ||
-                    insight.bottleneckTitle.contains("基频"),
-                score = f0Score ?: 0.0,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "F0 进度条按 110–200 Hz 映射；最终规则以 165 Hz 为关键分界。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "显示音色/F0/VFP指标",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = if (expanded) "收起" else "展开",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
+            ) {
+                Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 20.dp)) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(Modifier.height(14.dp))
+                    MetricRow(
+                        label = "标准音色",
+                        value = "%.1f".format(standard),
+                        progress = (standard / 100.0).toFloat(),
+                        highlighted = insight.bottleneckTitle.contains("音色"),
+                        score = standard,
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    MetricRow(
+                        label = "自然度",
+                        value = "%.1f".format(naturalness),
+                        progress = (naturalness / 100.0).toFloat(),
+                        highlighted = insight.bottleneckTitle.contains("自然度"),
+                        score = naturalness,
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    MetricRow(
+                        label = "平均 F0",
+                        value = f0?.let { "%.0f Hz".format(it) } ?: "未检测到",
+                        progress = f0Score?.div(100.0)?.toFloat() ?: 0f,
+                        highlighted = insight.bottleneckTitle.contains("F0") ||
+                            insight.bottleneckTitle.contains("基频"),
+                        score = f0Score ?: 0.0,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "F0 进度条按 110–200 Hz 映射；最终规则以 165 Hz 为关键分界。",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
     }
 }
