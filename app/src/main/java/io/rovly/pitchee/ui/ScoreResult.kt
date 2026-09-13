@@ -117,11 +117,12 @@ internal fun ScoreIndexChart(
     )
     val groupOffsetX = -(groupMinX + groupMaxX) / 2f
     val groupOffsetY = -(groupMinY + groupMaxY) / 2f
+    val chartHeight = (groupMaxY - groupMinY + 12f).coerceAtLeast(120f).dp
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(320.dp),
+            .height(chartHeight),
     ) {
         ScoreIndexCircle(
             score = masculineScore,

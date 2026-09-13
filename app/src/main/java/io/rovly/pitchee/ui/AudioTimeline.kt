@@ -1,12 +1,12 @@
 package io.rovly.pitchee.ui
 
 import android.media.MediaPlayer
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -22,10 +22,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -52,6 +50,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.rovly.pitchee.R
@@ -115,43 +114,6 @@ internal fun LiveWaveform(
 }
 
 @Composable
-internal fun ExpandableAudioTimeline(
-    audio: RecordedAudio,
-    timeline: FeminineTimeline?,
-    modifier: Modifier = Modifier,
-) {
-    var expanded by rememberSaveable(audio.file.absolutePath) { mutableStateOf(false) }
-
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.Start,
-    ) {
-        FilledIconButton(
-            onClick = { expanded = !expanded },
-            modifier = Modifier.size(52.dp),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_play),
-                contentDescription = if (expanded) "收起播放器" else "展开播放器",
-            )
-        }
-        AnimatedVisibility(
-            visible = expanded,
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut(),
-        ) {
-            Column {
-                Spacer(Modifier.height(12.dp))
-                RecordedAudioTimeline(
-                    audio = audio,
-                    timeline = timeline,
-                )
-            }
-        }
-    }
-}
-
-@Composable
 internal fun RecordedAudioTimeline(
     audio: RecordedAudio,
     timeline: FeminineTimeline?,
@@ -162,6 +124,7 @@ internal fun RecordedAudioTimeline(
     var isPlaying by remember(audio.file) { mutableStateOf(false) }
     var positionMs by remember(audio.file) { mutableLongStateOf(0L) }
     var durationMs by remember(audio.file) { mutableIntStateOf(0) }
+    var expanded by rememberSaveable(audio.file.absolutePath) { mutableStateOf(false) }
 
     DisposableEffect(player) {
         onDispose { player.release() }
@@ -199,54 +162,114 @@ internal fun RecordedAudioTimeline(
         positionMs = target.toLong()
     }
 
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column {
-                    Text(
-                        text = "录音时间轴",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = "拖动定位 · 双指缩放 · 点击跳转",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                FilledTonalButton(
-                    enabled = isPrepared,
-                    onClick = {
-                        if (isPlaying) {
-                            player.pause()
-                            isPlaying = false
-                        } else {
-                            if (positionMs >= durationMs - 100) seekTo(0.0)
-                            player.start()
-                            isPlaying = true
-                        }
-                    },
-                ) {
-                    Text(if (isPlaying) "暂停" else "播放")
-                }
-            }
-            Spacer(Modifier.height(14.dp))
-            WaveformView(
-                audio = audio,
-                timeline = timeline,
-                positionSeconds = positionMs / 1000.0,
-                onSeek = ::seekTo,
+    fun togglePlayback() {
+        if (!isPrepared) return
+        if (isPlaying) {
+            player.pause()
+            isPlaying = false
+        } else {
+            if (positionMs >= durationMs - 100) seekTo(0.0)
+            player.start()
+            isPlaying = true
+        }
+    }
+
+    val cornerRadius by animateDpAsState(
+        targetValue = if (expanded) 20.dp else 26.dp,
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = 260f),
+        label = "audio-player-corner",
+    )
+    val containerColor by animateColorAsState(
+        targetValue = if (expanded) {
+            MaterialTheme.colorScheme.surfaceVariant
+        } else {
+            MaterialTheme.colorScheme.primary
+        },
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = 260f),
+        label = "audio-player-color",
+    )
+    val sizeModifier = if (expanded) Modifier.fillMaxWidth() else Modifier.size(52.dp)
+
+    Surface(
+        modifier = modifier
+            .animateContentSize(
+                animationSpec = spring(dampingRatio = 0.78f, stiffness = 220f),
             )
-            Spacer(Modifier.height(8.dp))
-            FeminineScoreLegend()
+            .then(sizeModifier)
+            .clickable(enabled = !expanded) { expanded = true },
+        shape = RoundedCornerShape(cornerRadius),
+        color = containerColor,
+        contentColor = if (expanded) {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        } else {
+            MaterialTheme.colorScheme.onPrimary
+        },
+        shadowElevation = if (expanded) 0.dp else 3.dp,
+    ) {
+        if (expanded) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    FilledIconButton(
+                        enabled = isPrepared,
+                        onClick = ::togglePlayback,
+                        modifier = Modifier.size(44.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(
+                                if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play,
+                            ),
+                            contentDescription = if (isPlaying) "暂停" else "播放",
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = "录音回放",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = "拖动定位 · 双指缩放 · 点击跳转",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(
+                        onClick = { expanded = false },
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    ) {
+                        Text("收起")
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+                WaveformView(
+                    audio = audio,
+                    timeline = timeline,
+                    positionSeconds = positionMs / 1000.0,
+                    onSeek = ::seekTo,
+                )
+                Spacer(Modifier.height(8.dp))
+                FeminineScoreLegend()
+            }
+        } else {
+            Box(
+                modifier = Modifier.size(52.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_play),
+                    contentDescription = "展开播放器",
+                )
+            }
         }
     }
 }
@@ -412,13 +435,17 @@ private fun WaveformView(
                     zoom = nextZoom
                 },
                 enabled = zoom > 1f,
+                colors = ButtonDefaults.textButtonColors(contentColor = onSurface),
             ) {
                 Text("缩小")
             }
-            TextButton(onClick = {
-                zoom = 1f
-                viewportStart = 0f
-            }) {
+            TextButton(
+                onClick = {
+                    zoom = 1f
+                    viewportStart = 0f
+                },
+                colors = ButtonDefaults.textButtonColors(contentColor = onSurface),
+            ) {
                 Text("重置")
             }
             TextButton(
@@ -431,6 +458,7 @@ private fun WaveformView(
                     zoom = nextZoom
                 },
                 enabled = zoom < 12f,
+                colors = ButtonDefaults.textButtonColors(contentColor = onSurface),
             ) {
                 Text("放大")
             }

@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -262,7 +263,7 @@ private fun RecordAnalysisScreen() {
                             previousScore = current.previousScore,
                             onOpenRules = { showingRules = true },
                         ) {
-                            ExpandableAudioTimeline(
+                            RecordedAudioTimeline(
                                 audio = current.audio,
                                 timeline = timeline,
                             )
@@ -273,6 +274,9 @@ private fun RecordAnalysisScreen() {
                                 viewModel.reset()
                                 startRecording()
                             },
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
                             modifier = Modifier.align(Alignment.CenterHorizontally),
                         ) {
                             Text("重新录音")
@@ -304,6 +308,9 @@ private fun RecordAnalysisScreen() {
                                 viewModel.reset()
                                 startRecording()
                             },
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
                             modifier = Modifier.align(Alignment.CenterHorizontally),
                         ) {
                             Text("重新录音")
@@ -341,6 +348,9 @@ private fun ScoreRulesPage(
     ScreenColumn {
         TextButton(
             onClick = onBack,
+            colors = ButtonDefaults.textButtonColors(
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
         ) {
             Text("返回结果")
