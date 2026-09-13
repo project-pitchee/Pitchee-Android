@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -117,12 +118,11 @@ internal fun ScoreIndexChart(
     )
     val groupOffsetX = -(groupMinX + groupMaxX) / 2f
     val groupOffsetY = -(groupMinY + groupMaxY) / 2f
-    val chartHeight = (groupMaxY - groupMinY + 12f).coerceAtLeast(120f).dp
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(chartHeight),
+            .height(304.dp),
     ) {
         ScoreIndexCircle(
             score = masculineScore,
@@ -209,7 +209,13 @@ private fun ResultActionButton(
     text: String,
     onClick: () -> Unit,
 ) {
-    Button(onClick = onClick) {
+    Button(
+        onClick = onClick,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFFFFB6C1),
+            contentColor = Color(0xFF4A1D2B),
+        ),
+    ) {
         Text(
             text = text,
             fontWeight = FontWeight.Bold,

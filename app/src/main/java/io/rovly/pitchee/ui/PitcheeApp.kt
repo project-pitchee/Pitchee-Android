@@ -61,7 +61,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.rovly.pitchee.R
-import io.rovly.pitchee.data.FeminineTimeline
 import space.pitchee.core.PitcheePhase
 import kotlinx.coroutines.launch
 
@@ -245,12 +244,6 @@ private fun RecordAnalysisScreen() {
     Box(modifier = Modifier.fillMaxSize()) {
         when (val current = state) {
             is RecordUiState.Success -> {
-                val timeline = remember(current.audio, current.result) {
-                    FeminineTimeline.from(
-                        result = current.result,
-                        durationSeconds = current.audio.durationSeconds,
-                    )
-                }
                 if (showingRules) {
                     ScoreRulesPage(
                         result = current.result,
@@ -265,7 +258,6 @@ private fun RecordAnalysisScreen() {
                         ) {
                             RecordedAudioTimeline(
                                 audio = current.audio,
-                                timeline = timeline,
                             )
                         }
                         Spacer(Modifier.height(12.dp))
@@ -298,7 +290,6 @@ private fun RecordAnalysisScreen() {
                     ScreenColumn {
                         RecordedAudioTimeline(
                             audio = current.audio,
-                            timeline = null,
                         )
                         Spacer(Modifier.height(20.dp))
                         ErrorCard(current.message)

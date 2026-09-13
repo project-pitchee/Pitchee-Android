@@ -7,28 +7,23 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -38,27 +33,24 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.rovly.pitchee.R
-import io.rovly.pitchee.data.FeminineTimeline
 import io.rovly.pitchee.data.RecordedAudio
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
@@ -116,7 +108,6 @@ internal fun LiveWaveform(
 @Composable
 internal fun RecordedAudioTimeline(
     audio: RecordedAudio,
-    timeline: FeminineTimeline?,
     modifier: Modifier = Modifier,
 ) {
     val player = remember(audio.file) { MediaPlayer() }
@@ -125,6 +116,8 @@ internal fun RecordedAudioTimeline(
     var positionMs by remember(audio.file) { mutableLongStateOf(0L) }
     var durationMs by remember(audio.file) { mutableIntStateOf(0) }
     var expanded by rememberSaveable(audio.file.absolutePath) { mutableStateOf(false) }
+    var viewportStart by rememberSaveable(audio.file.absolutePath) { mutableFloatStateOf(0f) }
+    val windowSeconds = min(2.0, audio.durationSeconds).coerceAtLeast(0.05)
 
     DisposableEffect(player) {
         onDispose { player.release() }
@@ -155,6 +148,17 @@ internal fun RecordedAudioTimeline(
         }
     }
 
+    LaunchedEffect(isPlaying, positionMs, windowSeconds) {
+        if (!isPlaying) return@LaunchedEffect
+        val playhead = positionMs / 1000.0
+        val viewportEnd = viewportStart + windowSeconds
+        if (playhead < viewportStart || playhead > viewportEnd) {
+            viewportStart = (playhead - windowSeconds * 0.2)
+                .coerceIn(0.0, (audio.durationSeconds - windowSeconds).coerceAtLeast(0.0))
+                .toFloat()
+        }
+    }
+
     fun seekTo(seconds: Double) {
         if (!isPrepared) return
         val target = (seconds.coerceIn(0.0, audio.durationSeconds) * 1000.0).toInt()
@@ -168,7 +172,12 @@ internal fun RecordedAudioTimeline(
             player.pause()
             isPlaying = false
         } else {
-            if (positionMs >= durationMs - 100) seekTo(0.0)
+            val positionSeconds = positionMs / 1000.0
+            if (positionSeconds !in viewportStart.toDouble()..(viewportStart + windowSeconds)) {
+                seekTo(viewportStart + windowSeconds / 2.0)
+            } else if (positionMs >= durationMs - 100) {
+                seekTo(viewportStart.toDouble())
+            }
             player.start()
             isPlaying = true
         }
@@ -176,16 +185,16 @@ internal fun RecordedAudioTimeline(
 
     val cornerRadius by animateDpAsState(
         targetValue = if (expanded) 20.dp else 26.dp,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 260f),
+        animationSpec = spring(dampingRatio = 0.78f, stiffness = 260f),
         label = "audio-player-corner",
     )
     val containerColor by animateColorAsState(
         targetValue = if (expanded) {
             MaterialTheme.colorScheme.surfaceVariant
         } else {
-            MaterialTheme.colorScheme.primary
+            PlayerPink
         },
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 260f),
+        animationSpec = spring(dampingRatio = 0.78f, stiffness = 260f),
         label = "audio-player-color",
     )
     val sizeModifier = if (expanded) Modifier.fillMaxWidth() else Modifier.size(52.dp)
@@ -193,7 +202,7 @@ internal fun RecordedAudioTimeline(
     Surface(
         modifier = modifier
             .animateContentSize(
-                animationSpec = spring(dampingRatio = 0.78f, stiffness = 220f),
+                animationSpec = spring(dampingRatio = 0.76f, stiffness = 220f),
             )
             .then(sizeModifier)
             .clickable(enabled = !expanded) { expanded = true },
@@ -202,7 +211,7 @@ internal fun RecordedAudioTimeline(
         contentColor = if (expanded) {
             MaterialTheme.colorScheme.onSurfaceVariant
         } else {
-            MaterialTheme.colorScheme.onPrimary
+            PlayerInk
         },
         shadowElevation = if (expanded) 0.dp else 3.dp,
     ) {
@@ -220,6 +229,12 @@ internal fun RecordedAudioTimeline(
                         enabled = isPrepared,
                         onClick = ::togglePlayback,
                         modifier = Modifier.size(44.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = PlayerPink,
+                            contentColor = PlayerInk,
+                            disabledContainerColor = PlayerPink.copy(alpha = 0.45f),
+                            disabledContentColor = PlayerInk.copy(alpha = 0.55f),
+                        ),
                     ) {
                         Icon(
                             painter = painterResource(
@@ -236,29 +251,25 @@ internal fun RecordedAudioTimeline(
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            text = "拖动定位 · 双指缩放 · 点击跳转",
+                            text = "显示 2 秒 · 左右拖动",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    TextButton(
-                        onClick = { expanded = false },
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        ),
-                    ) {
-                        Text("收起")
-                    }
+                    Text(
+                        text = "${formatPlaybackTime(positionMs)} / ${formatPlaybackTime(durationMs.toLong())}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 Spacer(Modifier.height(14.dp))
-                WaveformView(
+                BasicWaveform(
                     audio = audio,
-                    timeline = timeline,
                     positionSeconds = positionMs / 1000.0,
-                    onSeek = ::seekTo,
+                    viewportStart = viewportStart.toDouble(),
+                    windowSeconds = windowSeconds,
+                    onViewportChange = { viewportStart = it.toFloat() },
                 )
-                Spacer(Modifier.height(8.dp))
-                FeminineScoreLegend()
             }
         } else {
             Box(
@@ -274,234 +285,95 @@ internal fun RecordedAudioTimeline(
     }
 }
 
+private val PlayerPink = Color(0xFFFFB6C1)
+private val PlayerInk = Color(0xFF4A1D2B)
+
 @Composable
-private fun WaveformView(
+private fun BasicWaveform(
     audio: RecordedAudio,
-    timeline: FeminineTimeline?,
     positionSeconds: Double,
-    onSeek: (Double) -> Unit,
+    viewportStart: Double,
+    windowSeconds: Double,
+    onViewportChange: (Double) -> Unit,
 ) {
-    val accent = MaterialTheme.colorScheme.primary
-    val onSurface = MaterialTheme.colorScheme.onSurface
-    val track = MaterialTheme.colorScheme.outlineVariant
-    val unknown = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.75f)
-    var zoom by rememberSaveable(audio.file.absolutePath) { mutableFloatStateOf(1f) }
-    var viewportStart by rememberSaveable(audio.file.absolutePath) { mutableFloatStateOf(0f) }
-    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
-    val visibleSpan = 1f / zoom
-    val visibleStartSeconds = viewportStart * audio.durationSeconds
-    val visibleDurationSeconds = audio.durationSeconds / zoom
-    val playheadSeconds = positionSeconds.coerceIn(0.0, audio.durationSeconds)
-    val playheadVisible = playheadSeconds in visibleStartSeconds..(visibleStartSeconds + visibleDurationSeconds)
+    val waveform = audio.waveform
+    if (waveform.isEmpty()) return
 
-    Column {
-        Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(156.dp)
-                .onSizeChanged { canvasSize = it }
-                .pointerInput(audio.file, visibleSpan, viewportStart) {
-                    detectTapGestures { point ->
-                        if (size.width == 0) return@detectTapGestures
-                        val fraction = (point.x / size.width).coerceIn(0f, 1f)
-                        onSeek(visibleStartSeconds + fraction * visibleDurationSeconds)
-                    }
-                }
-                .pointerInput(audio.file, zoom, viewportStart) {
-                    detectTransformGestures { centroid, pan, zoomChange, _ ->
-                        if (size.width == 0) return@detectTransformGestures
-                        val oldSpan = 1f / zoom
-                        val nextZoom = (zoom * zoomChange).coerceIn(1f, 12f)
-                        val nextSpan = 1f / nextZoom
-                        val centerFraction = centroid.x / size.width
-                        val anchored = viewportStart + centerFraction * oldSpan -
-                            centerFraction * nextSpan
-                        val panned = anchored - pan.x / size.width * nextSpan
-                        zoom = nextZoom
-                        viewportStart = panned.coerceIn(0f, 1f - nextSpan)
-                    }
-                },
-        ) {
-            drawRoundRect(
-                color = track.copy(alpha = 0.28f),
-                cornerRadius = CornerRadius(18.dp.toPx()),
-            )
+    val lineColor = MaterialTheme.colorScheme.onSurface
+    val centerColor = MaterialTheme.colorScheme.outlineVariant
+    val playheadColor = PlayerPink
+    val currentViewportStart by rememberUpdatedState(viewportStart)
+    val currentOnViewportChange by rememberUpdatedState(onViewportChange)
+    val maxStart = (audio.durationSeconds - windowSeconds).coerceAtLeast(0.0)
 
-            if (timeline != null) {
-                val firstBin = floor(viewportStart * timeline.size)
-                    .toInt()
-                    .coerceIn(0, timeline.size - 1)
-                val lastBin = ceil((viewportStart + visibleSpan) * timeline.size)
-                    .toInt()
-                    .coerceIn(firstBin + 1, timeline.size)
-                for (bin in firstBin until lastBin) {
-                    val binStartFraction = bin.toFloat() / timeline.size
-                    val binEndFraction = (bin + 1f) / timeline.size
-                    val x = ((binStartFraction - viewportStart) / visibleSpan) * size.width
-                    val width = ((binEndFraction - binStartFraction) / visibleSpan) * size.width
-                    val score = timeline.pointAtBin(bin)?.score
-                    drawRect(
-                        color = score?.let { feminineScoreColor(it.toDouble()) } ?: unknown,
-                        topLeft = Offset(x, 0f),
-                        size = Size(max(width + 0.6f, 1f), size.height),
-                    )
-                }
-            }
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(136.dp)
+            .pointerInput(audio.file, windowSeconds) {
+                var dragStart = 0f
+                var accumulatedDelta = 0f
+                detectDragGestures(
+                    onDragStart = {
+                        dragStart = currentViewportStart.toFloat()
+                        accumulatedDelta = 0f
+                    },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        accumulatedDelta -= dragAmount.x / size.width * windowSeconds.toFloat()
+                        val next = (dragStart + accumulatedDelta)
+                            .coerceIn(0f, maxStart.toFloat())
+                        currentOnViewportChange(next.toDouble())
+                    },
+                )
+            },
+    ) {
+        val centerY = size.height / 2f
+        drawLine(
+            color = centerColor,
+            start = Offset(0f, centerY),
+            end = Offset(size.width, centerY),
+            strokeWidth = 1.dp.toPx(),
+        )
 
-            val waveform = audio.waveform
-            val firstPoint = floor(viewportStart * waveform.size).toInt()
+        val samplesPerSecond = waveform.size / audio.durationSeconds
+        val firstPoint = floor(viewportStart * samplesPerSecond).toInt()
+            .coerceIn(0, waveform.lastIndex)
+        val lastPoint = ceil((viewportStart + windowSeconds) * samplesPerSecond).toInt()
+            .coerceIn(firstPoint + 1, waveform.size)
+        val barSpacing = 3.dp.toPx()
+        val barCount = (size.width / barSpacing).toInt().coerceAtLeast(2)
+        repeat(barCount) { index ->
+            val fraction = index.toFloat() / (barCount - 1)
+            val waveformIndex = (firstPoint + fraction * (lastPoint - firstPoint - 1))
+                .roundToInt()
                 .coerceIn(0, waveform.lastIndex)
-            val lastPoint = ceil((viewportStart + visibleSpan) * waveform.size).toInt()
-                .coerceIn(firstPoint + 1, waveform.size)
-            val drawSteps = (size.width / 2.5f).toInt().coerceAtLeast(1)
-            repeat(drawSteps) { index ->
-                val fraction = index.toFloat() / max(drawSteps - 1, 1)
-                val point = (firstPoint + fraction * (lastPoint - firstPoint - 1))
-                    .roundToInt()
-                    .coerceIn(0, waveform.lastIndex)
-                val amplitude = waveform[point].coerceIn(0f, 1f)
-                val halfHeight = amplitude * size.height * 0.42f
-                val x = size.width * fraction
-                drawLine(
-                    color = onSurface.copy(alpha = 0.86f),
-                    start = Offset(x, size.height / 2f - halfHeight),
-                    end = Offset(x, size.height / 2f + halfHeight),
-                    strokeWidth = 1.8.dp.toPx(),
-                    cap = StrokeCap.Round,
-                )
-            }
-
-            if (playheadVisible) {
-                val playheadX = ((playheadSeconds - visibleStartSeconds) /
-                    visibleDurationSeconds * size.width).toFloat()
-                drawLine(
-                    color = accent,
-                    start = Offset(playheadX, 0f),
-                    end = Offset(playheadX, size.height),
-                    strokeWidth = 3.dp.toPx(),
-                    cap = StrokeCap.Round,
-                )
-            }
-        }
-
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(34.dp),
-        ) {
-            if (playheadVisible) {
-                val badgeWidth = 112.dp
-                val playheadX = (
-                    (playheadSeconds - visibleStartSeconds) / visibleDurationSeconds *
-                        maxWidth.value
-                    ).toFloat()
-                val badgeOffset = (playheadX.dp - badgeWidth / 2)
-                    .coerceIn(0.dp, maxWidth - badgeWidth)
-                val score = timeline?.pointAt(playheadSeconds)?.score
-                Surface(
-                    modifier = Modifier.offset(x = badgeOffset),
-                    shape = RoundedCornerShape(8.dp),
-                    color = score?.let { feminineScoreColor(it.toDouble()) }
-                        ?: MaterialTheme.colorScheme.outlineVariant,
-                    contentColor = Color.White,
-                ) {
-                    Text(
-                        text = score?.let { "当前 %.0f".format(it) } ?: "未检测到语音",
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                }
-            }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "${(zoom * 10).roundToInt() / 10f}×",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            val halfHeight = waveform[waveformIndex].coerceIn(0f, 1f) * size.height * 0.43f
+            val x = fraction * size.width
+            drawLine(
+                color = lineColor.copy(alpha = 0.82f),
+                start = Offset(x, centerY - halfHeight),
+                end = Offset(x, centerY + halfHeight),
+                strokeWidth = 2.dp.toPx(),
+                cap = StrokeCap.Round,
             )
-            Spacer(Modifier.width(8.dp))
-            TextButton(
-                onClick = {
-                    val oldSpan = 1f / zoom
-                    val nextZoom = (zoom / 1.5f).coerceAtLeast(1f)
-                    val nextSpan = 1f / nextZoom
-                    viewportStart = (viewportStart + oldSpan / 2f - nextSpan / 2f)
-                        .coerceIn(0f, 1f - nextSpan)
-                    zoom = nextZoom
-                },
-                enabled = zoom > 1f,
-                colors = ButtonDefaults.textButtonColors(contentColor = onSurface),
-            ) {
-                Text("缩小")
-            }
-            TextButton(
-                onClick = {
-                    zoom = 1f
-                    viewportStart = 0f
-                },
-                colors = ButtonDefaults.textButtonColors(contentColor = onSurface),
-            ) {
-                Text("重置")
-            }
-            TextButton(
-                onClick = {
-                    val oldSpan = 1f / zoom
-                    val nextZoom = (zoom * 1.5f).coerceAtMost(12f)
-                    val nextSpan = 1f / nextZoom
-                    viewportStart = (viewportStart + oldSpan / 2f - nextSpan / 2f)
-                        .coerceIn(0f, 1f - nextSpan)
-                    zoom = nextZoom
-                },
-                enabled = zoom < 12f,
-                colors = ButtonDefaults.textButtonColors(contentColor = onSurface),
-            ) {
-                Text("放大")
-            }
+        }
+
+        val playheadVisible = positionSeconds in viewportStart..(viewportStart + windowSeconds)
+        if (playheadVisible) {
+            val x = ((positionSeconds - viewportStart) / windowSeconds * size.width).toFloat()
+            drawLine(
+                color = playheadColor,
+                start = Offset(x, 0f),
+                end = Offset(x, size.height),
+                strokeWidth = 3.dp.toPx(),
+                cap = StrokeCap.Round,
+            )
         }
     }
 }
 
-@Composable
-private fun FeminineScoreLegend() {
-    Column {
-        Text(
-            text = "时间级女性化指数（VFP + 局部自然度 + F0）",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(6.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            val labels = listOf("0–19", "20–39", "40–59", "60–79", "80+")
-            labels.forEachIndexed { index, label ->
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Canvas(Modifier.size(8.dp)) {
-                        drawCircle(ScoreColors[index])
-                    }
-                    Spacer(Modifier.width(3.dp))
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
-                    )
-                }
-            }
-        }
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = "灰色表示 VAD 未识别到有效语音；时间级综合分使用源音频上的 VFP、自然度和 F0 窗口计算，最终总分仍可能因整段规则而不同。",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+private fun formatPlaybackTime(positionMs: Long): String {
+    val totalSeconds = (positionMs / 1000L).coerceAtLeast(0L)
+    return "%d:%02d".format(totalSeconds / 60L, totalSeconds % 60L)
 }
