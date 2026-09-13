@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="pitchee_pink">#FFA80055</color>
-    <color name="pitchee_pink_dark">#FF870044</color>
+    <color name="pitchee_pink">#FFD81B60</color>
+    <color name="pitchee_pink_dark">#FF9C1141</color>
     <color name="pitchee_pink_light">#FFFFB1C8</color>
     <color name="pitchee_surface">#FFFFF8F8</color>
     <color name="pitchee_secondary">#FF7D5260</color>

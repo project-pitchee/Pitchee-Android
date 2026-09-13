@@ -1,10 +1,9 @@
 package io.rovly.pitchee.ui
 
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.border
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,7 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,18 +34,26 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.rovly.pitchee.data.PitcheeResult
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
+import kotlinx.coroutines.delay
 
 @Composable
 internal fun ScoreResultContent(
     result: PitcheeResult,
+    previousScore: Double? = null,
     timeline: @Composable () -> Unit = {},
 ) {
     val insight = remember(result) { ScoreInsight.from(result) }
-    ScoreHero(result, insight)
+    ScoreHero(result, insight, previousScore)
     Spacer(Modifier.height(16.dp))
     timeline()
     Spacer(Modifier.height(12.dp))
@@ -58,21 +65,12 @@ internal fun ScoreResultContent(
 }
 
 @Composable
-private fun ScoreHero(result: PitcheeResult, insight: ScoreInsight) {
+private fun ScoreHero(
+    result: PitcheeResult,
+    insight: ScoreInsight,
+    previousScore: Double?,
+) {
     val score = result.composite.finalScore.coerceIn(0.0, 100.0)
-    val masculineScore = 100.0 - score
-    val feminineColor = MaterialTheme.colorScheme.primary
-    val masculineColor = Color(0xFF3B73D9)
-    val feminineSize by animateDpAsState(
-        targetValue = (92f + score.toFloat() * 0.68f).dp,
-        animationSpec = spring(dampingRatio = 0.76f, stiffness = 240f),
-        label = "feminine-score-size",
-    )
-    val masculineSize by animateDpAsState(
-        targetValue = (92f + masculineScore.toFloat() * 0.68f).dp,
-        animationSpec = spring(dampingRatio = 0.76f, stiffness = 240f),
-        label = "masculine-score-size",
-    )
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -85,36 +83,10 @@ private fun ScoreHero(result: PitcheeResult, insight: ScoreInsight) {
                 .padding(horizontal = 20.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(
-                text = "声音指数",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            AnimatedScoreIndexChart(
+                targetScore = score,
+                previousScore = previousScore,
             )
-            Spacer(Modifier.height(8.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(232.dp),
-            ) {
-                ScoreIndexCircle(
-                    label = "男性化指数",
-                    score = masculineScore,
-                    color = masculineColor,
-                    size = masculineSize,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .offset(x = (-34).dp, y = 32.dp),
-                )
-                ScoreIndexCircle(
-                    label = "女性化指数",
-                    score = score,
-                    color = feminineColor,
-                    size = feminineSize,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .offset(x = 34.dp, y = (-32).dp),
-                )
-            }
             Spacer(Modifier.height(8.dp))
             Text(
                 text = insight.headline,
@@ -128,41 +100,153 @@ private fun ScoreHero(result: PitcheeResult, insight: ScoreInsight) {
 }
 
 @Composable
+internal fun ScoreIndexChart(
+    score: Double,
+    modifier: Modifier = Modifier,
+) {
+    val normalizedScore = score.coerceIn(0.0, 100.0)
+    val masculineScore = 100.0 - normalizedScore
+    val feminineSize = (70f + normalizedScore.toFloat() * 1.50f).dp
+    val masculineSize = (70f + masculineScore.toFloat() * 1.50f).dp
+    val feminineTravel = cornerTravel(normalizedScore).value
+    val masculineTravel = cornerTravel(masculineScore).value
+    val feminineCenterX = feminineTravel
+    val feminineCenterY = -feminineTravel * 0.82f
+    val masculineCenterX = -masculineTravel
+    val masculineCenterY = masculineTravel * 0.82f
+    val groupMinX = minOf(
+        feminineCenterX - feminineSize.value / 2f,
+        masculineCenterX - masculineSize.value / 2f,
+    )
+    val groupMaxX = maxOf(
+        feminineCenterX + feminineSize.value / 2f,
+        masculineCenterX + masculineSize.value / 2f,
+    )
+    val groupMinY = minOf(
+        feminineCenterY - feminineSize.value / 2f,
+        masculineCenterY - masculineSize.value / 2f,
+    )
+    val groupMaxY = maxOf(
+        feminineCenterY + feminineSize.value / 2f,
+        masculineCenterY + masculineSize.value / 2f,
+    )
+    val groupOffsetX = -(groupMinX + groupMaxX) / 2f
+    val groupOffsetY = -(groupMinY + groupMaxY) / 2f
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(288.dp),
+    ) {
+        ScoreIndexCircle(
+            score = masculineScore,
+            color = Color(0xFF6495ED),
+            contentColor = Color.White,
+            size = masculineSize,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .offset(
+                    x = (masculineCenterX + groupOffsetX).dp,
+                    y = (masculineCenterY + groupOffsetY).dp,
+                ),
+        )
+        ScoreIndexCircle(
+            score = normalizedScore,
+            color = Color(0xFFFFB6C1),
+            contentColor = Color(0xFF3A1F2A),
+            size = feminineSize,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .offset(
+                    x = (feminineCenterX + groupOffsetX).dp,
+                    y = (feminineCenterY + groupOffsetY).dp,
+                ),
+        )
+    }
+}
+
+@Composable
+internal fun AnimatedScoreIndexChart(
+    targetScore: Double,
+    previousScore: Double?,
+    modifier: Modifier = Modifier,
+) {
+    val target = targetScore.coerceIn(0.0, 100.0).toFloat()
+    val start = (previousScore ?: targetScore).coerceIn(0.0, 100.0).toFloat()
+    val animatedScore = remember { Animatable(start) }
+
+    LaunchedEffect(target, start) {
+        animatedScore.stop()
+        animatedScore.snapTo(start)
+        if (abs(target - start) > 0.01f) {
+            delay(500)
+            animatedScore.animateTo(
+                targetValue = target,
+                animationSpec = spring(
+                    dampingRatio = 0.45f,
+                    stiffness = 170f,
+                    visibilityThreshold = 0.05f,
+                ),
+            )
+        }
+    }
+
+    ScoreIndexChart(
+        score = animatedScore.value.toDouble(),
+        modifier = modifier,
+    )
+}
+
+private fun cornerTravel(score: Double): Dp {
+    val lowScoreFactor = (1.0 - score.coerceIn(0.0, 100.0) / 100.0).toFloat()
+    return (22f + lowScoreFactor * 42f).dp
+}
+
+@Composable
 private fun ScoreIndexCircle(
-    label: String,
     score: Double,
     color: Color,
+    contentColor: Color,
     size: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = modifier
-            .size(size)
-            .border(BorderStroke(1.5.dp, color.copy(alpha = 0.42f)), CircleShape),
+        modifier = modifier.size(size),
         shape = CircleShape,
-        color = color.copy(alpha = 0.16f),
-        contentColor = color,
-        shadowElevation = 8.dp,
+        color = color,
+        contentColor = contentColor,
+        shadowElevation = 0.dp,
+        tonalElevation = 0.dp,
     ) {
         Box(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = "%.1f%%".format(score),
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Black,
-                )
-            }
+            Text(
+                text = "%.1f%%".format(score),
+                style = MaterialTheme.typography.displaySmall.copy(
+                    fontSize = TextUnit.Unspecified,
+                    lineHeight = TextUnit.Unspecified,
+                ),
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip,
+                autoSize = TextAutoSize.StepBased(
+                    minFontSize = 12.sp,
+                    maxFontSize = scoreFontCap(score),
+                    stepSize = 0.5.sp,
+                ),
+            )
         }
     }
+}
+
+private fun scoreFontCap(score: Double): TextUnit {
+    val progress = (score.coerceIn(0.0, 100.0) / 100.0).toFloat()
+    return (34f + 18f * sqrt(progress)).sp
 }
 
 @Composable

@@ -4,6 +4,7 @@
     <string name="nav_pitch">实时基频</string>
     <string name="nav_analysis">声音分析</string>
     <string name="nav_about">关于</string>
+    <string name="nav_score_test">测试</string>
 
     <string name="pitch_title">实时基频</string>
     <string name="pitch_subtitle">观察说话过程中的音高变化</string>
@@ -36,6 +37,10 @@
     <string name="stop_and_analyze">停止并分析</string>
     <string name="record_permission_denied">需要麦克风权限才能录音和分析</string>
     <string name="analysis_failed">分析失败</string>
+
+    <string name="score_test_title">分数预览</string>
+    <string name="score_test_subtitle">拖动滑杆改变综合分，双圆会实时更新</string>
+    <string name="score_test_slider_label">伪造综合分</string>
 
     <string name="about_title">关于 Pitchee</string>
     <string name="about_subtitle">设备端声音训练与趋势观察工具</string>

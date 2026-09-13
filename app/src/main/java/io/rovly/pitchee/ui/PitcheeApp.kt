@@ -2,6 +2,7 @@ package io.rovly.pitchee.ui
 
 import android.Manifest
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -35,6 +37,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -44,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -65,13 +69,20 @@ private enum class PitcheeDestination(
     PITCH(R.string.nav_pitch, R.drawable.ic_pitch_analysis),
     ANALYSIS(R.string.nav_analysis, R.drawable.ic_model_analysis),
     ABOUT(R.string.nav_about, R.drawable.ic_about),
+    SCORE_TEST(R.string.nav_score_test, R.drawable.ic_model_analysis),
 }
 
 @Preview
 @Composable
 fun PitcheeApp() {
     var selectedIndex by rememberSaveable { mutableIntStateOf(0) }
-    val destinations = PitcheeDestination.entries
+    val context = LocalContext.current
+    val debugBuild = remember(context) {
+        (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+    }
+    val destinations = remember(debugBuild) {
+        PitcheeDestination.entries.filter { it != PitcheeDestination.SCORE_TEST || debugBuild }
+    }
 
     Scaffold(
         bottomBar = {
@@ -101,7 +112,50 @@ fun PitcheeApp() {
                 PitcheeDestination.PITCH -> PitchComingSoonScreen()
                 PitcheeDestination.ANALYSIS -> RecordAnalysisScreen()
                 PitcheeDestination.ABOUT -> AboutScreen()
+                PitcheeDestination.SCORE_TEST -> ScoreTestScreen()
             }
+        }
+    }
+}
+
+@Composable
+private fun ScoreTestScreen() {
+    var score by rememberSaveable { mutableFloatStateOf(68f) }
+
+    ScreenColumn {
+        ScreenHeader(
+            title = stringResource(R.string.score_test_title),
+            subtitle = stringResource(R.string.score_test_subtitle),
+        )
+        Spacer(Modifier.height(20.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
+            ),
+        ) {
+            ScoreIndexChart(
+                score = score.toDouble(),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 20.dp),
+            )
+        }
+        Spacer(Modifier.height(28.dp))
+        Text(
+            text = stringResource(R.string.score_test_slider_label),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Slider(
+            value = score,
+            onValueChange = { score = it },
+            valueRange = 0f..100f,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("女性化 %.1f%%".format(score))
+            Text("男性化 %.1f%%".format(100f - score))
         }
     }
 }
@@ -200,7 +254,10 @@ private fun RecordAnalysisScreen() {
                     )
                 }
                 ScreenColumn {
-                    ScoreResultContent(current.result) {
+                    ScoreResultContent(
+                        result = current.result,
+                        previousScore = current.previousScore,
+                    ) {
                         RecordedAudioTimeline(
                             audio = current.audio,
                             timeline = timeline,

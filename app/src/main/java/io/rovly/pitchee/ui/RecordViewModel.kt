@@ -43,6 +43,7 @@ sealed interface RecordUiState {
     data class Success(
         val result: PitcheeResult,
         val audio: RecordedAudio,
+        val previousScore: Double?,
     ) : RecordUiState
 
     data class Error(
@@ -57,6 +58,7 @@ class RecordViewModel(
 ) : ViewModel() {
     private var timerJob: Job? = null
     private var retainedAudio: RecordedAudio? = null
+    private var lastResultScore: Double? = null
 
     private val mutableState = MutableStateFlow<RecordUiState>(RecordUiState.Ready)
     val state: StateFlow<RecordUiState> = mutableState.asStateFlow()
@@ -146,6 +148,8 @@ class RecordViewModel(
                         message = "有效说话时间不足 5 秒，请重新录制"
                     )
                 } else {
+                    val previousScore = lastResultScore
+                    lastResultScore = result.composite.finalScore
                     mutableState.value = RecordUiState.Analyzing(
                         phase = PitcheePhase.COMPLETED,
                         progress = PitcheeProgress(
@@ -157,7 +161,11 @@ class RecordViewModel(
                         audio = recordedAudio,
                     )
                     delay(COMPLETION_HOLD_MS)
-                    mutableState.value = RecordUiState.Success(result, recordedAudio)
+                    mutableState.value = RecordUiState.Success(
+                        result = result,
+                        audio = recordedAudio,
+                        previousScore = previousScore,
+                    )
                 }
             } catch (error: CancellationException) {
                 throw error
