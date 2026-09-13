@@ -128,17 +128,10 @@ private fun ScoreTestScreen() {
             subtitle = stringResource(R.string.score_test_subtitle),
         )
         Spacer(Modifier.height(20.dp))
-        Card(
+        ScoreIndexChart(
+            score = score.toDouble(),
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
-            ),
-        ) {
-            ScoreIndexChart(
-                score = score.toDouble(),
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 20.dp),
-            )
-        }
+        )
         Spacer(Modifier.height(28.dp))
         Text(
             text = stringResource(R.string.score_test_slider_label),

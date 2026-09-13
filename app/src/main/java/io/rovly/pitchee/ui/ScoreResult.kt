@@ -33,7 +33,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -53,50 +52,24 @@ internal fun ScoreResultContent(
     timeline: @Composable () -> Unit = {},
 ) {
     val insight = remember(result) { ScoreInsight.from(result) }
-    ScoreHero(result, insight, previousScore)
+    val score = result.composite.finalScore.coerceIn(0.0, 100.0)
+    AnimatedScoreIndexChart(
+        targetScore = score,
+        previousScore = previousScore,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Spacer(Modifier.height(12.dp))
+    if (insight.hasBottleneck) {
+        BottleneckCard(insight)
+    } else if (score > 60.0) {
+        PassCard()
+    }
     Spacer(Modifier.height(16.dp))
     timeline()
     Spacer(Modifier.height(12.dp))
     RuleCard(result, insight)
     Spacer(Modifier.height(12.dp))
-    BottleneckCard(insight)
-    Spacer(Modifier.height(12.dp))
     MetricsCard(result, insight)
-}
-
-@Composable
-private fun ScoreHero(
-    result: PitcheeResult,
-    insight: ScoreInsight,
-    previousScore: Double?,
-) {
-    val score = result.composite.finalScore.coerceIn(0.0, 100.0)
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
-        ),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            AnimatedScoreIndexChart(
-                targetScore = score,
-                previousScore = previousScore,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = insight.headline,
-                modifier = Modifier.fillMaxWidth(),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center,
-            )
-        }
-    }
 }
 
 @Composable
@@ -104,11 +77,13 @@ internal fun ScoreIndexChart(
     score: Double,
     modifier: Modifier = Modifier,
 ) {
-    val normalizedScore = score.coerceIn(0.0, 100.0)
-    val masculineScore = 100.0 - normalizedScore
-    val feminineSize = (70f + normalizedScore.toFloat() * 1.50f).dp
-    val masculineSize = (70f + masculineScore.toFloat() * 1.50f).dp
-    val feminineTravel = cornerTravel(normalizedScore).value
+    val feminineVisual = score.coerceIn(0.0, 112.0)
+    val masculineVisual = (100.0 - score).coerceIn(0.0, 112.0)
+    val feminineScore = feminineVisual.coerceAtMost(100.0)
+    val masculineScore = masculineVisual.coerceAtMost(100.0)
+    val feminineSize = (76f + feminineVisual.toFloat() * 1.76f).dp
+    val masculineSize = (76f + masculineVisual.toFloat() * 1.76f).dp
+    val feminineTravel = cornerTravel(feminineScore).value
     val masculineTravel = cornerTravel(masculineScore).value
     val feminineCenterX = feminineTravel
     val feminineCenterY = -feminineTravel * 0.82f
@@ -136,7 +111,7 @@ internal fun ScoreIndexChart(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(288.dp),
+            .height(320.dp),
     ) {
         ScoreIndexCircle(
             score = masculineScore,
@@ -151,7 +126,7 @@ internal fun ScoreIndexChart(
                 ),
         )
         ScoreIndexCircle(
-            score = normalizedScore,
+            score = feminineScore,
             color = Color(0xFFFFB6C1),
             contentColor = Color(0xFF3A1F2A),
             size = feminineSize,
@@ -161,6 +136,24 @@ internal fun ScoreIndexChart(
                     x = (feminineCenterX + groupOffsetX).dp,
                     y = (feminineCenterY + groupOffsetY).dp,
                 ),
+        )
+    }
+}
+
+@Composable
+private fun PassCard() {
+    val containerColor = Color(0xFFDDF6E4)
+    val contentColor = Color(0xFF116B3A)
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+    ) {
+        Text(
+            text = "你的声音很pass",
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 22.dp),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = contentColor,
         )
     }
 }

@@ -12,10 +12,32 @@ import io.rovly.pitchee.data.VoiceActivity
 import io.rovly.pitchee.ui.ScoreInsight
 import io.rovly.pitchee.ui.ScoreRuleState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ScoreInsightTest {
+    @Test
+    fun passBoostHasNoMainBottleneck() {
+        val result = result(
+            standardScore = 80.0,
+            naturalnessScore = 80.0,
+            meanF0 = 180.0,
+            composite = CompositeScore(
+                baseScore = 60.0,
+                finalScore = 75.0,
+                cap = null,
+                rule = "pass_boost",
+                limited = false,
+                boosted = true,
+            ),
+        )
+
+        val insight = ScoreInsight.from(result)
+
+        assertFalse(insight.hasBottleneck)
+    }
+
     @Test
     fun explainsLowF0CapAndIdentifiesF0AsBottleneck() {
         val result = result(
