@@ -262,7 +262,7 @@ private fun RecordAnalysisScreen() {
                             previousScore = current.previousScore,
                             onOpenRules = { showingRules = true },
                         ) {
-                            RecordedAudioTimeline(
+                            ExpandableAudioTimeline(
                                 audio = current.audio,
                                 timeline = timeline,
                             )

@@ -60,7 +60,7 @@ internal fun ScoreResultContent(
     result: PitcheeResult,
     previousScore: Double? = null,
     onOpenRules: () -> Unit = {},
-    timeline: @Composable () -> Unit = {},
+    audioPlayer: @Composable () -> Unit = {},
 ) {
     val insight = remember(result) { ScoreInsight.from(result) }
     val score = result.composite.finalScore.coerceIn(0.0, 100.0)
@@ -70,6 +70,8 @@ internal fun ScoreResultContent(
         modifier = Modifier.fillMaxWidth(),
     )
     Spacer(Modifier.height(12.dp))
+    audioPlayer()
+    Spacer(Modifier.height(12.dp))
     if (insight.hasBottleneck) {
         BottleneckCard(insight, onOpenRules)
         Spacer(Modifier.height(12.dp))
@@ -78,8 +80,6 @@ internal fun ScoreResultContent(
         Spacer(Modifier.height(12.dp))
     }
     MetricsCard(result, insight)
-    Spacer(Modifier.height(16.dp))
-    timeline()
 }
 
 @Composable

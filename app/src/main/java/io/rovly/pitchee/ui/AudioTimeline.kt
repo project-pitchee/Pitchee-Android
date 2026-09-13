@@ -1,6 +1,11 @@
 package io.rovly.pitchee.ui
 
 import android.media.MediaPlayer
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -19,7 +24,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -44,8 +51,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import io.rovly.pitchee.R
 import io.rovly.pitchee.data.FeminineTimeline
 import io.rovly.pitchee.data.RecordedAudio
 import kotlin.math.ceil
@@ -101,6 +110,43 @@ internal fun LiveWaveform(
                 strokeWidth = 2.4.dp.toPx(),
                 cap = StrokeCap.Round,
             )
+        }
+    }
+}
+
+@Composable
+internal fun ExpandableAudioTimeline(
+    audio: RecordedAudio,
+    timeline: FeminineTimeline?,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by rememberSaveable(audio.file.absolutePath) { mutableStateOf(false) }
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.Start,
+    ) {
+        FilledIconButton(
+            onClick = { expanded = !expanded },
+            modifier = Modifier.size(52.dp),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_play),
+                contentDescription = if (expanded) "收起播放器" else "展开播放器",
+            )
+        }
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+        ) {
+            Column {
+                Spacer(Modifier.height(12.dp))
+                RecordedAudioTimeline(
+                    audio = audio,
+                    timeline = timeline,
+                )
+            }
         }
     }
 }
