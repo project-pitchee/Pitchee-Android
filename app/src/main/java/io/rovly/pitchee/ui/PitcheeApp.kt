@@ -149,8 +149,14 @@ private fun ScoreTestScreen() {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text("女性化 %.1f%%".format(score))
-            Text("男性化 %.1f%%".format(100f - score))
+            Text(
+                text = "女性化 %.1f%%".format(score),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Text(
+                text = "男性化 %.1f%%".format(100f - score),
+                style = MaterialTheme.typography.labelLarge,
+            )
         }
     }
 }

@@ -448,13 +448,21 @@ private fun ScorePath(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ScoreStage("基础连续分", "%.1f".format(baseScore), contentColor)
-        Text("→", color = contentColor.copy(alpha = 0.55f))
+        Text(
+            text = "→",
+            style = MaterialTheme.typography.labelLarge,
+            color = contentColor.copy(alpha = 0.55f),
+        )
         ScoreStage(
             label = "规则限制",
             value = cap?.let { "≤ %.0f".format(it) } ?: "无",
             color = contentColor,
         )
-        Text("→", color = contentColor.copy(alpha = 0.55f))
+        Text(
+            text = "→",
+            style = MaterialTheme.typography.labelLarge,
+            color = contentColor.copy(alpha = 0.55f),
+        )
         ScoreStage("最终得分", "%.1f".format(finalScore), contentColor, emphasized = true)
     }
 }
