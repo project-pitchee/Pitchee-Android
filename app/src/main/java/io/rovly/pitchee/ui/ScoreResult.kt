@@ -25,12 +25,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -194,16 +194,25 @@ private fun InsightCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = contentColor,
             )
-            TextButton(
+            Spacer(Modifier.height(8.dp))
+            ResultActionButton(
+                text = "查看评分细则",
                 onClick = onOpenRules,
-            ) {
-                Text(
-                    text = "查看评分规则",
-                    color = contentColor,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
+            )
         }
+    }
+}
+
+@Composable
+private fun ResultActionButton(
+    text: String,
+    onClick: () -> Unit,
+) {
+    Button(onClick = onClick) {
+        Text(
+            text = text,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
@@ -460,7 +469,6 @@ private fun MetricsCard(result: PitcheeResult, insight: ScoreInsight) {
     val f0Score = f0?.let { min(100.0, max(0.0, (it - 110.0) / 90.0 * 100.0)) }
 
     Card(
-        onClick = { expanded = !expanded },
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -479,10 +487,9 @@ private fun MetricsCard(result: PitcheeResult, insight: ScoreInsight) {
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
-                Text(
+                ResultActionButton(
                     text = if (expanded) "收起" else "展开",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    onClick = { expanded = !expanded },
                 )
             }
             AnimatedVisibility(
