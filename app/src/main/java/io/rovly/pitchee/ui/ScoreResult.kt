@@ -8,6 +8,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -199,6 +200,12 @@ private fun InsightCard(
             ResultActionButton(
                 text = "查看评分细则",
                 onClick = onOpenRules,
+                containerColor = if (isSystemInDarkTheme()) {
+                    Color(0xFF2E7D52)
+                } else {
+                    Color(0xFF1F6F43)
+                },
+                contentColor = Color.White,
             )
         }
     }
@@ -208,12 +215,14 @@ private fun InsightCard(
 private fun ResultActionButton(
     text: String,
     onClick: () -> Unit,
+    containerColor: Color,
+    contentColor: Color,
 ) {
     Button(
         onClick = onClick,
         colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFFFFB6C1),
-            contentColor = Color(0xFF4A1D2B),
+            containerColor = containerColor,
+            contentColor = contentColor,
         ),
     ) {
         Text(
@@ -230,7 +239,7 @@ internal fun AnimatedScoreIndexChart(
     modifier: Modifier = Modifier,
 ) {
     val target = targetScore.coerceIn(0.0, 100.0).toFloat()
-    val start = (previousScore ?: targetScore).coerceIn(0.0, 100.0).toFloat()
+    val start = (previousScore ?: 0.0).coerceIn(0.0, 100.0).toFloat()
     val animatedScore = remember { Animatable(start) }
 
     LaunchedEffect(target, start) {
@@ -470,6 +479,10 @@ private fun BottleneckCard(
 @Composable
 private fun MetricsCard(result: PitcheeResult, insight: ScoreInsight) {
     var expanded by rememberSaveable { mutableStateOf(false) }
+    val darkTheme = isSystemInDarkTheme()
+    val cardColor = if (darkTheme) Color(0xFF3A3114) else Color(0xFFFFF4CC)
+    val toggleColor = if (darkTheme) Color(0xFFFFB74D) else Color(0xFFF59E0B)
+    val toggleContentColor = Color(0xFF3A2100)
     val standard = result.vfp.standardScore
     val naturalness = result.naturalness.score
     val f0 = result.f0.meanHz
@@ -478,7 +491,7 @@ private fun MetricsCard(result: PitcheeResult, insight: ScoreInsight) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            containerColor = cardColor,
         ),
     ) {
         Column {
@@ -497,6 +510,8 @@ private fun MetricsCard(result: PitcheeResult, insight: ScoreInsight) {
                 ResultActionButton(
                     text = if (expanded) "收起" else "展开",
                     onClick = { expanded = !expanded },
+                    containerColor = toggleColor,
+                    contentColor = toggleContentColor,
                 )
             }
             AnimatedVisibility(
