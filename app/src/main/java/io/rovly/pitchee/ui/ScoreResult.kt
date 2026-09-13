@@ -101,25 +101,38 @@ internal fun ScoreIndexChart(
         val masculineVisual = (100.0 - score).coerceIn(0.0, 112.0)
         val feminineScore = feminineVisual.coerceAtMost(100.0)
         val masculineScore = masculineVisual.coerceAtMost(100.0)
-        val feminineSize = (76f + feminineVisual.toFloat() * 1.76f).dp
-        val masculineSize = (76f + masculineVisual.toFloat() * 1.76f).dp
-        val feminineTravel = cornerTravel(feminineScore).value
-        val masculineTravel = cornerTravel(masculineScore).value
-        val feminineCenterY = -feminineTravel * 0.82f
-        val masculineCenterY = masculineTravel * 0.82f
-        val rawGroupMinX = minOf(
-            feminineTravel - feminineSize.value / 2f,
-            -masculineTravel - masculineSize.value / 2f,
+        val rawFeminineSize = 76f + feminineVisual.toFloat() * 1.76f
+        val rawMasculineSize = 76f + masculineVisual.toFloat() * 1.76f
+        val rawFeminineTravel = cornerTravel(feminineScore).value
+        val rawMasculineTravel = cornerTravel(masculineScore).value
+        val rawFeminineCenterY = -rawFeminineTravel * 0.82f
+        val rawMasculineCenterY = rawMasculineTravel * 0.82f
+        val rawGroupWidth = maxOf(
+            rawFeminineTravel + rawFeminineSize / 2f,
+            -rawMasculineTravel + rawMasculineSize / 2f,
+        ) - minOf(
+            rawFeminineTravel - rawFeminineSize / 2f,
+            -rawMasculineTravel - rawMasculineSize / 2f,
         )
-        val rawGroupMaxX = maxOf(
-            feminineTravel + feminineSize.value / 2f,
-            -masculineTravel + masculineSize.value / 2f,
+        val rawGroupHeight = maxOf(
+            rawFeminineCenterY + rawFeminineSize / 2f,
+            rawMasculineCenterY + rawMasculineSize / 2f,
+        ) - minOf(
+            rawFeminineCenterY - rawFeminineSize / 2f,
+            rawMasculineCenterY - rawMasculineSize / 2f,
         )
         val targetGroupWidth = (maxWidth.value - 40f).coerceAtLeast(0f)
-        val horizontalExtra = ((targetGroupWidth - (rawGroupMaxX - rawGroupMinX)) / 2f)
-            .coerceAtLeast(0f)
-        val feminineCenterX = feminineTravel + horizontalExtra
-        val masculineCenterX = -masculineTravel - horizontalExtra
+        val horizontalScale = (targetGroupWidth / rawGroupWidth).coerceAtLeast(1f)
+        val verticalScale = (288f / rawGroupHeight).coerceAtLeast(1f)
+        val groupScale = minOf(horizontalScale, verticalScale)
+        val feminineSize = (rawFeminineSize * groupScale).dp
+        val masculineSize = (rawMasculineSize * groupScale).dp
+        val feminineTravel = rawFeminineTravel * groupScale
+        val masculineTravel = rawMasculineTravel * groupScale
+        val feminineCenterX = feminineTravel
+        val feminineCenterY = -feminineTravel * 0.82f
+        val masculineCenterX = -masculineTravel
+        val masculineCenterY = masculineTravel * 0.82f
         val groupMinX = minOf(
             feminineCenterX - feminineSize.value / 2f,
             masculineCenterX - masculineSize.value / 2f,
