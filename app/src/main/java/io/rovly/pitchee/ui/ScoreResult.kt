@@ -12,6 +12,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -91,66 +92,79 @@ internal fun ScoreIndexChart(
     score: Double,
     modifier: Modifier = Modifier,
 ) {
-    val feminineVisual = score.coerceIn(0.0, 112.0)
-    val masculineVisual = (100.0 - score).coerceIn(0.0, 112.0)
-    val feminineScore = feminineVisual.coerceAtMost(100.0)
-    val masculineScore = masculineVisual.coerceAtMost(100.0)
-    val feminineSize = (76f + feminineVisual.toFloat() * 1.76f).dp
-    val masculineSize = (76f + masculineVisual.toFloat() * 1.76f).dp
-    val feminineTravel = cornerTravel(feminineScore).value
-    val masculineTravel = cornerTravel(masculineScore).value
-    val feminineCenterX = feminineTravel
-    val feminineCenterY = -feminineTravel * 0.82f
-    val masculineCenterX = -masculineTravel
-    val masculineCenterY = masculineTravel * 0.82f
-    val groupMinX = minOf(
-        feminineCenterX - feminineSize.value / 2f,
-        masculineCenterX - masculineSize.value / 2f,
-    )
-    val groupMaxX = maxOf(
-        feminineCenterX + feminineSize.value / 2f,
-        masculineCenterX + masculineSize.value / 2f,
-    )
-    val groupMinY = minOf(
-        feminineCenterY - feminineSize.value / 2f,
-        masculineCenterY - masculineSize.value / 2f,
-    )
-    val groupMaxY = maxOf(
-        feminineCenterY + feminineSize.value / 2f,
-        masculineCenterY + masculineSize.value / 2f,
-    )
-    val groupOffsetX = -(groupMinX + groupMaxX) / 2f
-    val groupOffsetY = -(groupMinY + groupMaxY) / 2f
-
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .height(304.dp),
     ) {
-        ScoreIndexCircle(
-            score = masculineScore,
-            color = Color(0xFF6495ED),
-            contentColor = Color.White,
-            size = masculineSize,
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(
-                    x = (masculineCenterX + groupOffsetX).dp,
-                    y = (masculineCenterY + groupOffsetY).dp,
-                ),
+        val feminineVisual = score.coerceIn(0.0, 112.0)
+        val masculineVisual = (100.0 - score).coerceIn(0.0, 112.0)
+        val feminineScore = feminineVisual.coerceAtMost(100.0)
+        val masculineScore = masculineVisual.coerceAtMost(100.0)
+        val feminineSize = (76f + feminineVisual.toFloat() * 1.76f).dp
+        val masculineSize = (76f + masculineVisual.toFloat() * 1.76f).dp
+        val feminineTravel = cornerTravel(feminineScore).value
+        val masculineTravel = cornerTravel(masculineScore).value
+        val feminineCenterY = -feminineTravel * 0.82f
+        val masculineCenterY = masculineTravel * 0.82f
+        val rawGroupMinX = minOf(
+            feminineTravel - feminineSize.value / 2f,
+            -masculineTravel - masculineSize.value / 2f,
         )
-        ScoreIndexCircle(
-            score = feminineScore,
-            color = Color(0xFFFFB6C1),
-            contentColor = Color(0xFF3A1F2A),
-            size = feminineSize,
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(
-                    x = (feminineCenterX + groupOffsetX).dp,
-                    y = (feminineCenterY + groupOffsetY).dp,
-                ),
+        val rawGroupMaxX = maxOf(
+            feminineTravel + feminineSize.value / 2f,
+            -masculineTravel + masculineSize.value / 2f,
         )
+        val targetGroupWidth = (maxWidth.value - 40f).coerceAtLeast(0f)
+        val horizontalExtra = ((targetGroupWidth - (rawGroupMaxX - rawGroupMinX)) / 2f)
+            .coerceAtLeast(0f)
+        val feminineCenterX = feminineTravel + horizontalExtra
+        val masculineCenterX = -masculineTravel - horizontalExtra
+        val groupMinX = minOf(
+            feminineCenterX - feminineSize.value / 2f,
+            masculineCenterX - masculineSize.value / 2f,
+        )
+        val groupMaxX = maxOf(
+            feminineCenterX + feminineSize.value / 2f,
+            masculineCenterX + masculineSize.value / 2f,
+        )
+        val groupMinY = minOf(
+            feminineCenterY - feminineSize.value / 2f,
+            masculineCenterY - masculineSize.value / 2f,
+        )
+        val groupMaxY = maxOf(
+            feminineCenterY + feminineSize.value / 2f,
+            masculineCenterY + masculineSize.value / 2f,
+        )
+        val groupOffsetX = -(groupMinX + groupMaxX) / 2f
+        val groupOffsetY = -(groupMinY + groupMaxY) / 2f
+
+        Box(Modifier.fillMaxSize()) {
+            ScoreIndexCircle(
+                score = masculineScore,
+                color = Color(0xFF6495ED),
+                contentColor = Color.White,
+                size = masculineSize,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset(
+                        x = (masculineCenterX + groupOffsetX).dp,
+                        y = (masculineCenterY + groupOffsetY).dp,
+                    ),
+            )
+            ScoreIndexCircle(
+                score = feminineScore,
+                color = Color(0xFFFFB6C1),
+                contentColor = Color(0xFF3A1F2A),
+                size = feminineSize,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset(
+                        x = (feminineCenterX + groupOffsetX).dp,
+                        y = (feminineCenterY + groupOffsetY).dp,
+                    ),
+            )
+        }
     }
 }
 
