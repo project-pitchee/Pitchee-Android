@@ -61,6 +61,7 @@ import kotlinx.coroutines.delay
 internal fun ScoreResultContent(
     result: PitcheeResult,
     previousScore: Double? = null,
+    animateScore: Boolean = true,
     onOpenRules: () -> Unit = {},
     audioPlayer: @Composable () -> Unit = {},
 ) {
@@ -69,6 +70,7 @@ internal fun ScoreResultContent(
     AnimatedScoreIndexChart(
         targetScore = score,
         previousScore = previousScore,
+        animate = animateScore,
         modifier = Modifier.fillMaxWidth(),
     )
     Spacer(Modifier.height(12.dp))
@@ -154,12 +156,15 @@ internal fun ScoreIndexChart(
 
 @Composable
 private fun PassCard(onOpenRules: () -> Unit) {
+    val darkTheme = isSystemInDarkTheme()
     InsightCard(
         label = "评估结果",
         title = "你的声音很pass",
         description = "本次没有触发主要短板规则。",
         containerColor = Color(0xFFDDF6E4),
         contentColor = Color(0xFF116B3A),
+        actionContainerColor = if (darkTheme) Color(0xFF3F9D6B) else Color(0xFF1F6F43),
+        actionContentColor = Color.White,
         onOpenRules = onOpenRules,
     )
 }
@@ -171,6 +176,8 @@ private fun InsightCard(
     description: String,
     containerColor: Color,
     contentColor: Color,
+    actionContainerColor: Color,
+    actionContentColor: Color,
     onOpenRules: () -> Unit,
 ) {
     Card(
@@ -200,12 +207,8 @@ private fun InsightCard(
             ResultActionButton(
                 text = "查看评分细则",
                 onClick = onOpenRules,
-                containerColor = if (isSystemInDarkTheme()) {
-                    Color(0xFF2E7D52)
-                } else {
-                    Color(0xFF1F6F43)
-                },
-                contentColor = Color.White,
+                containerColor = actionContainerColor,
+                contentColor = actionContentColor,
             )
         }
     }
@@ -236,16 +239,21 @@ private fun ResultActionButton(
 internal fun AnimatedScoreIndexChart(
     targetScore: Double,
     previousScore: Double?,
+    animate: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val target = targetScore.coerceIn(0.0, 100.0).toFloat()
-    val start = (previousScore ?: 0.0).coerceIn(0.0, 100.0).toFloat()
+    val start = if (animate) {
+        (previousScore ?: 0.0).coerceIn(0.0, 100.0).toFloat()
+    } else {
+        target
+    }
     val animatedScore = remember { Animatable(start) }
 
-    LaunchedEffect(target, start) {
+    LaunchedEffect(target, start, animate) {
         animatedScore.stop()
         animatedScore.snapTo(start)
-        if (abs(target - start) > 0.01f) {
+        if (animate && abs(target - start) > 0.01f) {
             delay(500)
             animatedScore.animateTo(
                 targetValue = target,
@@ -465,6 +473,7 @@ private fun BottleneckCard(
     } else {
         MaterialTheme.colorScheme.onTertiaryContainer
     }
+    val darkTheme = isSystemInDarkTheme()
 
     InsightCard(
         label = "主要短板",
@@ -472,6 +481,8 @@ private fun BottleneckCard(
         description = insight.bottleneckDescription,
         containerColor = containerColor,
         contentColor = contentColor,
+        actionContainerColor = if (darkTheme) Color(0xFFB64B5D) else Color(0xFF8E1B2E),
+        actionContentColor = Color.White,
         onOpenRules = onOpenRules,
     )
 }
@@ -480,9 +491,9 @@ private fun BottleneckCard(
 private fun MetricsCard(result: PitcheeResult, insight: ScoreInsight) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     val darkTheme = isSystemInDarkTheme()
-    val cardColor = if (darkTheme) Color(0xFF3A3114) else Color(0xFFFFF4CC)
-    val toggleColor = if (darkTheme) Color(0xFFFFB74D) else Color(0xFFF59E0B)
-    val toggleContentColor = Color(0xFF3A2100)
+    val cardColor = if (darkTheme) Color(0xFF4A344C) else Color(0xFFD8BFD8)
+    val toggleColor = if (darkTheme) Color(0xFFB58CBE) else Color(0xFFB89BC7)
+    val toggleContentColor = if (darkTheme) Color(0xFF26152A) else Color(0xFF321530)
     val standard = result.vfp.standardScore
     val naturalness = result.naturalness.score
     val f0 = result.f0.meanHz

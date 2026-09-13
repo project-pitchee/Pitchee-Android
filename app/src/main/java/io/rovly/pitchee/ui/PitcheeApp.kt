@@ -250,10 +250,14 @@ private fun RecordAnalysisScreen() {
                         onBack = { showingRules = false },
                     )
                 } else {
+                    val animateScore = remember(current.scoreAnimationToken) {
+                        viewModel.consumeScoreAnimation(current.scoreAnimationToken)
+                    }
                     ScreenColumn {
                         ScoreResultContent(
                             result = current.result,
                             previousScore = current.previousScore,
+                            animateScore = animateScore,
                             onOpenRules = { showingRules = true },
                         ) {
                             RecordedAudioTimeline(

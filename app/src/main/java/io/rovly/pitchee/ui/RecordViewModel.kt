@@ -45,6 +45,7 @@ sealed interface RecordUiState {
         val result: PitcheeResult,
         val audio: RecordedAudio,
         val previousScore: Double?,
+        val scoreAnimationToken: Long,
     ) : RecordUiState
 
     data class Error(
@@ -64,6 +65,8 @@ class RecordViewModel(
         .getFloat(KEY_LAST_RESULT_SCORE, NO_PREVIOUS_SCORE)
         .takeUnless { it == NO_PREVIOUS_SCORE }
         ?.toDouble()
+    private var resultSequence = 0L
+    private var consumedScoreAnimationToken: Long? = null
 
     private val mutableState = MutableStateFlow<RecordUiState>(RecordUiState.Ready)
     val state: StateFlow<RecordUiState> = mutableState.asStateFlow()
@@ -173,6 +176,7 @@ class RecordViewModel(
                         result = result,
                         audio = recordedAudio,
                         previousScore = previousScore,
+                        scoreAnimationToken = ++resultSequence,
                     )
                 }
             } catch (error: CancellationException) {
@@ -192,6 +196,12 @@ class RecordViewModel(
         if (mutableState.value is RecordUiState.Analyzing) return
         discardRetainedAudio()
         mutableState.value = RecordUiState.Ready
+    }
+
+    fun consumeScoreAnimation(token: Long): Boolean {
+        if (consumedScoreAnimationToken == token) return false
+        consumedScoreAnimationToken = token
+        return true
     }
 
     override fun onCleared() {
