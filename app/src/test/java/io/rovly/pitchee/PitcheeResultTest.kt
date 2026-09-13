@@ -1,8 +1,11 @@
 package io.rovly.pitchee
 
 import io.rovly.pitchee.data.PitcheeResult
+import io.rovly.pitchee.data.hasSpeechSecondsAtLeast
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PitcheeResultTest {
@@ -79,5 +82,11 @@ class PitcheeResultTest {
         assertEquals(75.0, result.naturalness.windows.single().score, 0.0)
         assertNull(result.f0.meanHz)
         assertEquals(60.0, result.composite.finalScore, 0.0)
+        assertFalse(result.hasSpeechSecondsAtLeast(5.0))
+        assertTrue(
+            result.copy(
+                vad = result.vad.copy(speechSeconds = 5.0),
+            ).hasSpeechSecondsAtLeast(5.0)
+        )
     }
 }

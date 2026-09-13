@@ -5,7 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.rovly.pitchee.data.FeminineTimeline
 import io.rovly.pitchee.data.PitcheeRepository
-import space.pitchee.core.PitcheePhase
+import space.pitchee.core.PitcheeProgressStage
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -59,16 +59,13 @@ class PitcheeRepositoryInstrumentedTest {
                 instrumentation.context.assets.open("pitchee-speech.m4a").use { input ->
                     speech.outputStream().use(input::copyTo)
                 }
-                val phases = mutableListOf<PitcheePhase>()
-                val pcm = repository.decode(
-                    uri = Uri.fromFile(speech),
-                    onPhase = phases::add,
-                )
+                val progressUpdates = mutableListOf<space.pitchee.core.PitcheeProgress>()
+                val pcm = repository.decode(uri = Uri.fromFile(speech))
                 val result = repository.analyzePcm(
                     samples = pcm.samples,
                     sampleRate = pcm.sampleRate,
                     channels = pcm.channels,
-                    onPhase = phases::add,
+                    onProgress = { progressUpdates += it },
                 )
                 assertTrue(
                     "Final score should be in [0, 100] but was ${result.composite.finalScore}",
@@ -79,8 +76,13 @@ class PitcheeRepositoryInstrumentedTest {
                     result.vfp.windowCount > 0,
                 )
                 assertTrue(
-                    "Native phase callback was not invoked: $phases",
-                    PitcheePhase.ANALYZING in phases && PitcheePhase.COMPLETED in phases,
+                    "Native detailed progress was not invoked: ${progressUpdates.size}",
+                    progressUpdates.any {
+                        it.stage == PitcheeProgressStage.DETECTING_SPEECH ||
+                            it.stage == PitcheeProgressStage.EXTRACTING_VFP_EMBEDDINGS
+                    } && progressUpdates.any {
+                        it.stage == PitcheeProgressStage.COMPLETED
+                    },
                 )
                 val timeline = FeminineTimeline.from(result, pcm.durationSeconds)
                 val speechStart = result.vad.segments.first().startSeconds

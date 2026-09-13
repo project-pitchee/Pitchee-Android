@@ -24,10 +24,10 @@ data class ScoreInsight(
         fun from(result: PitcheeResult): ScoreInsight {
             val score = result.composite.finalScore
             val headline = when {
-                score >= 80 -> "整体表现很强，继续保持"
-                score >= 60 -> "已经有明显优势，再打磨细节"
-                score >= 40 -> "基础已建立，下一项提升最划算"
-                else -> "先解决最拖分的部分"
+                score >= 80 -> "主要指标高于参考线"
+                score >= 60 -> "主要指标达到参考线"
+                score >= 40 -> "存在一项低于参考线的指标"
+                else -> "当前分数主要受短板指标限制"
             }
 
             val (ruleName, ruleDescription, ruleImpact, ruleState) = ruleSummary(result)
@@ -54,7 +54,7 @@ data class ScoreInsight(
                 )
                 "pass_boost" -> RuleSummary(
                     ruleName = "达标提升规则",
-                    ruleDescription = "基频、自然度和基础音色同时达到门槛，触发 60–100 区间的提升。",
+                    ruleDescription = "三项条件同时满足时，综合分进入 60–100 区间。",
                     ruleImpact = if (composite.boosted) {
                         "规则提升 +%.1f".format(composite.finalScore - composite.baseScore)
                     } else {
@@ -65,7 +65,7 @@ data class ScoreInsight(
                 "high_f0_stylized_cap" -> cappedRule(
                     name = "高基频、低自然度封顶",
                     cap = composite.cap,
-                    description = "基频已经较高，但自然度低于 50，声音可能显得刻意或不稳定。",
+                    description = "基频已经较高，但自然度低于 50。",
                     result = result,
                 )
                 "low_f0_natural_cap" -> cappedRule(
@@ -117,18 +117,18 @@ data class ScoreInsight(
 
         private fun findBottleneck(result: PitcheeResult): Pair<String, String> =
             when (result.composite.rule) {
-                "f0_unavailable" -> "基频信息不足" to
-                    "在安静环境中用稳定音量多录几秒，避免气声、耳语或过低的音量。"
-                "high_f0_stylized_cap" -> "自然度是主要短板" to
-                    "先减少刻意拔高和挤压音调，使用放松的说话状态，把自然度提高到 50 以上。"
-                "low_f0_natural_cap" -> "F0 是主要短板" to
-                    "保持当前自然度，通过轻松的发声练习逐步提升平均 F0，目标先接近并超过 165 Hz。"
-                "low_f0_stylized_cap" -> "F0 和自然度同时不足" to
-                    "先降低发声紧张感，再逐步提升音高；不要只追求高音而牺牲自然度。"
-                "high_f0_male_cap" -> "模型音色是主要短板" to
-                    "基频已经达标，下一步重点练习共鸣和音色，而不是继续抬高音调。"
-                "pass_boost" -> "没有明显短板" to
-                    "继续保持稳定的音高、自然度和音色表现，避免为了追求高分而过度用力。"
+                "f0_unavailable" -> "基频不可用" to
+                    "没有可靠的 F0，本次没有触发其他综合分规则。"
+                "high_f0_stylized_cap" -> "自然度低于阈值" to
+                    "F0 高于 165 Hz，但自然度低于 50，触发最高 30 分规则。"
+                "low_f0_natural_cap" -> "F0 低于阈值" to
+                    "自然度达到 50，但 F0 不高于 165 Hz，触发最高 59 分规则。"
+                "low_f0_stylized_cap" -> "F0 和自然度低于阈值" to
+                    "F0 不高于 165 Hz，且自然度低于 50，触发最高 20 分规则。"
+                "high_f0_male_cap" -> "音色标准分低于阈值" to
+                    "F0 高于 165 Hz，但音色标准分低于 50，触发最高 59 分规则。"
+                "pass_boost" -> "未触发封顶规则" to
+                    "基频、自然度和音色标准分均达到提升门槛。"
                 else -> continuousBottleneck(result)
             }
 
@@ -141,11 +141,11 @@ data class ScoreInsight(
             }
             val weakest = when {
                 f0Score == null || f0Score <= standard && f0Score <= naturalness ->
-                    "基频" to "当前平均 F0 还需要提升，先把目标稳定在 165–200 Hz 区间。"
+                    "基频" to "平均 F0 在三个连续评分项中最低。"
                 standard <= naturalness ->
-                    "音色标准分" to "音色模型分相对较弱，重点练习共鸣位置和更稳定的音色。"
+                    "音色标准分" to "音色标准分在三个连续评分项中最低。"
                 else ->
-                    "自然度" to "自然度相对较弱，减少挤压和刻意变化，让说话更放松、稳定。"
+                    "自然度" to "自然度在三个连续评分项中最低。"
             }
             return weakest
         }

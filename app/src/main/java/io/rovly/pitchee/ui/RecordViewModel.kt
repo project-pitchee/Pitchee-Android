@@ -12,7 +12,10 @@ import io.rovly.pitchee.data.AudioRecorder
 import io.rovly.pitchee.data.PitcheeRepository
 import io.rovly.pitchee.data.PitcheeResult
 import io.rovly.pitchee.data.RecordedAudio
+import io.rovly.pitchee.data.hasSpeechSecondsAtLeast
 import space.pitchee.core.PitcheePhase
+import space.pitchee.core.PitcheeProgress
+import space.pitchee.core.PitcheeProgressStage
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -33,6 +36,7 @@ sealed interface RecordUiState {
 
     data class Analyzing(
         val phase: PitcheePhase,
+        val progress: PitcheeProgress? = null,
         val audio: RecordedAudio? = null,
     ) : RecordUiState
 
@@ -127,14 +131,34 @@ class RecordViewModel(
                     samples = pcm.samples,
                     sampleRate = pcm.sampleRate,
                     channels = pcm.channels,
-                    onPhase = { phase ->
+                    onProgress = { progress ->
                         mutableState.value = RecordUiState.Analyzing(
-                            phase = phase,
+                            phase = progress.stage.toPhase(),
+                            progress = progress,
                             audio = recordedAudio,
                         )
                     },
                 )
-                mutableState.value = RecordUiState.Success(result, recordedAudio)
+                if (!result.hasSpeechSecondsAtLeast(MINIMUM_SPEECH_SECONDS)) {
+                    recordedAudio.file.delete()
+                    retainedAudio = null
+                    mutableState.value = RecordUiState.Error(
+                        message = "有效说话时间不足 5 秒，请重新录制"
+                    )
+                } else {
+                    mutableState.value = RecordUiState.Analyzing(
+                        phase = PitcheePhase.COMPLETED,
+                        progress = PitcheeProgress(
+                            stage = PitcheeProgressStage.COMPLETED,
+                            completed = 1,
+                            total = 1,
+                            stageFraction = 1f,
+                        ),
+                        audio = recordedAudio,
+                    )
+                    delay(COMPLETION_HOLD_MS)
+                    mutableState.value = RecordUiState.Success(result, recordedAudio)
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
@@ -166,9 +190,19 @@ class RecordViewModel(
         retainedAudio = null
     }
 
+    private fun PitcheeProgressStage.toPhase(): PitcheePhase = when (this) {
+        PitcheeProgressStage.LOADING_AUDIO,
+        PitcheeProgressStage.RESAMPLING_AUDIO,
+        -> PitcheePhase.LOADING_AUDIO
+        PitcheeProgressStage.COMPLETED -> PitcheePhase.COMPLETED
+        else -> PitcheePhase.ANALYZING
+    }
+
     companion object {
         const val MAX_RECORDING_SECONDS = 20f
+        const val MINIMUM_SPEECH_SECONDS = 5.0
         private const val TIMER_INTERVAL_MS = 16L
+        private const val COMPLETION_HOLD_MS = 900L
 
         fun factory(context: Context): ViewModelProvider.Factory = viewModelFactory {
             initializer {

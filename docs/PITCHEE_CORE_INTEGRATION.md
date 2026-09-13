@@ -3,7 +3,7 @@
 ## 1. 集成基线
 
 - 上游仓库：`https://github.com/project-pitchee/Pitchee-core`
-- 集成提交：`fdc6a93dd2274bb475320ff1a00cd71e8deec084`
+- 集成提交：`b4d642ae066aba8ff3c63844d68ffa482057f436`
 - 上游版本：PitcheeCore `0.1.0`
 - 模型版本：`2026-09`
 - ONNX Runtime：Android `1.24.2`
@@ -12,11 +12,12 @@
 - 最低 Android API：24
 - 当前打包 ABI：`arm64-v8a`、`x86_64`
 
-上游源码和模型被放在 `third_party/Pitchee-core/`。本次从 `18e13c8` 更新到
-`fdc6a93`，包含自然度 PCM16 管线对齐、JSON schema 2、F0/VFP/自然度源音频
-时间轴窗口，以及 VFP 跨 VAD 片段映射。模型文件哈希未变化，C ABI 只有参数名
-调整，JNI 函数签名保持不变。上游项目没有 Git tag，因此提交号是当前唯一可
-复现的版本标识。
+上游源码和模型被放在 `third_party/Pitchee-core/`。当前集成为 `b4d642a`：
+- `399fe8b` 将高 F0、低自然度封顶从 45 降到 30。
+- `2644fe9` 改为直接使用原生 VAD 时间轴窗口，短语音不再补零。
+- `b4d642a` 让自然度窗口与 VFP 窗口一一对应，并更新 ECAPA 模型。
+旧 phase callback 和详细 progress callback 均保持兼容。上游项目没有 Git tag，
+因此提交号是当前唯一可复现的版本标识。
 
 ## 2. 工程结构
 
@@ -71,8 +72,8 @@ val repository = PitcheeRepository(context)
 val result = repository.analyze(
     uri = contentUri,
     maxSeconds = 20,
-    onPhase = { phase ->
-        // LOADING_AUDIO / PREPARING_MODELS / ANALYZING / COMPLETED
+    onProgress = { progress ->
+        // progress.stage / completed / total / stageFraction
     },
 )
 ```
@@ -234,12 +235,18 @@ Release 构建原本已经是优化构建。
 ### 4.12 录音和 Compose 集成
 
 声音分析需要 `RECORD_AUDIO`。当前使用 `MediaRecorder` 生成 AAC/M4A，最长录制
-20 秒并自动停止，然后由 `AudioFileDecoder -> PitcheeCore` 处理。权限只在用户
+20 秒并自动停止；Core 返回的 VAD 有效语音少于 5 秒时不进入结果页。录音页提供
+《北风与太阳》《乌鸦喝水》《小马过河》三段可点击切换的朗读语料。停止录音后由
+`AudioFileDecoder -> PitcheeCore` 处理。权限只在用户
 点击“开始录音”时申请，未录音时不会占用麦克风。录音过程中轮询
 `MediaRecorder.maxAmplitude` 绘制实时波形。采样间隔为 16 ms，并对相邻峰值做
 轻度平滑，避免仅以 10 FPS 刷新造成卡顿；波形使用固定幅度，不按当前窗口自动
 归一化，新采样从右侧进入并向左滚动。停止后解码 PCM，生成固定数量峰值桶用于
 缩放显示，同时保留 M4A 文件给 `MediaPlayer` 播放。
+
+模型缓存独立使用 `MODEL_CACHE_VERSION`。虽然 Core 的 `modelVersion` 仍为
+`2026-09`，但 `VFPHead.onnx` 的字节已经变化，因此缓存版本提升为
+`2026-09-native-windows`，已有安装会重新复制模型，避免继续使用旧缓存。
 
 schema 2 中 `f0.windows`、`vfp.windows`、`naturalness.windows` 都直接提供源音频
 时间轴位置，不再需要在 Android 侧反向映射 VAD 拼接时间。`FeminineTimeline`
@@ -263,7 +270,7 @@ PitcheeCore 标识；录音键在空闲、录音和分析状态之间使用尺�
 最终得分和实际压低分值。具体规则包括：
 
 - `pass_boost`：满足高 F0、高自然度、标准音色分门槛时提升到 60–100 区间。
-- `high_f0_stylized_cap`：F0 高但自然度低，最高 45。
+- `high_f0_stylized_cap`：F0 高但自然度低于 50，最高 30。
 - `low_f0_natural_cap`：自然度达标但 F0 不高于 165 Hz，最高 59。
 - `low_f0_stylized_cap`：F0 和自然度都偏低，最高 20。
 - `high_f0_male_cap`：F0 达标但模型音色标准分低于 50，最高 59。
@@ -274,10 +281,11 @@ PitcheeCore 标识；录音键在空闲、录音和分析状态之间使用尺�
 
 ### 4.14 推理进度和 Android 硬件加速
 
-上游 C ABI 有 phase callback。当前 JNI 已把它桥接到 Kotlin，用于驱动分析状态；
-声音分析页在结果前只显示动画录音键和波形，分析阶段不再堆叠文字卡片，而是用
-按钮进度环表达。`AudioFileDecoder` 还增加了 60 秒超时，避免损坏音频导致永久
-停留在“分析中”。
+上游 C ABI 新增 `pitchee_analyzer_analyze_pcm_with_progress` 和 13 个细粒度
+阶段。Android JNI 使用该接口，把 `completed/total/fraction` 原样传给 Kotlin。
+圆键外环仍反映跨阶段整体进度，但界面只显示转换后的自然语言阶段，例如
+“正在提取音色特征”，不显示百分比或 `x/x`。旧 phase callback 仍保留用于兼容。
+`AudioFileDecoder` 还增加了 60 秒超时，避免损坏音频导致永久停留在“分析中”。
 
 Android 版本目前没有启用 NNAPI 等 execution provider，仍使用 CPU。
 需要硬件加速时，需要先验证 ONNX Runtime Android 的 NNAPI/其他 provider
@@ -305,9 +313,12 @@ Android 版本目前没有启用 NNAPI 等 execution provider，仍使用 CPU。
   静音 WAV 文件分析；静音按预期被 VAD 以 `no speech` 拒绝
 - 通过 8.5 秒 AAC 合成语音的完整 `Uri -> MediaCodec -> PitcheeCore ->
   PitcheeResult` 成功路径，验证综合分位于 `0..100` 且 VFP 窗口数大于 0
-- 验证 Kotlin 可以收到 native `ANALYZING` 和 `COMPLETED` 阶段回调
-- 优化 Debug 原生构建后，schema 2 完整成功路径约 5 秒；同一测试语音因重采样
-  和自然度管线修复，综合分由最初版本约 `46.78` 变为 `45.26`
+- 验证 Kotlin 可以收到 native `DETECTING_SPEECH`、VFP 特征提取和 `COMPLETED`
+  等细粒度进度回调
+- 设备测试确认能收到 `DETECTING_SPEECH`、VFP 特征提取、自然度评分和
+  `COMPLETED` 等细粒度进度
+- 新版原生时间轴窗口和设备测试中，7.53 秒语音产生 45 个 VFP/自然度窗口，
+  完整成功路径约 8.5 秒，综合分约 `45.98`
 - 在 Android API 32 arm64 模拟器上手动验证了麦克风权限、录音、停止分析、
   深粉色 Material 3 三页导航和 About 页面
 - 手动验证录音过程实时波形、录音后播放、时间轴缩放，以及五色指数和灰色无语音区间

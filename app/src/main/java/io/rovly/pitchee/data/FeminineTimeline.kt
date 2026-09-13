@@ -107,7 +107,7 @@ class FeminineTimeline private constructor(
                 )
 
             val cap = when {
-                f0Hz > 165.0 && naturalness < 50.0 && standard > 50.0 -> 45.0
+                f0Hz > 165.0 && naturalness < 50.0 -> 30.0
                 f0Hz <= 165.0 && naturalness >= 50.0 -> 59.0
                 f0Hz <= 165.0 && naturalness < 50.0 -> 20.0
                 f0Hz > 165.0 && naturalness >= 50.0 && standard < 50.0 -> 59.0

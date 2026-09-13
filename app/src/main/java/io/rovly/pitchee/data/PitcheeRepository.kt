@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import space.pitchee.core.PitcheeAnalyzer
 import space.pitchee.core.PitcheePhase
+import space.pitchee.core.PitcheeProgress
 
 /**
  * App-facing PitcheeCore API. Call [analyze] for an audio Uri or [analyzePcm]
@@ -26,9 +27,16 @@ class PitcheeRepository(
         uri: Uri,
         maxSeconds: Int? = null,
         onPhase: ((PitcheePhase) -> Unit)? = null,
+        onProgress: ((PitcheeProgress) -> Unit)? = null,
     ): PitcheeResult {
         val audio = decode(uri, maxSeconds, onPhase)
-        return analyzePcm(audio.samples, audio.sampleRate, audio.channels, onPhase)
+        return analyzePcm(
+            samples = audio.samples,
+            sampleRate = audio.sampleRate,
+            channels = audio.channels,
+            onPhase = onPhase,
+            onProgress = onProgress,
+        )
     }
 
     suspend fun decode(
@@ -45,6 +53,7 @@ class PitcheeRepository(
         sampleRate: Int,
         channels: Int,
         onPhase: ((PitcheePhase) -> Unit)? = null,
+        onProgress: ((PitcheeProgress) -> Unit)? = null,
     ): PitcheeResult = withContext(Dispatchers.Default) {
         require(samples.isNotEmpty()) { "PCM 数据不能为空" }
         require(sampleRate > 0) { "采样率必须大于 0" }
@@ -62,7 +71,13 @@ class PitcheeRepository(
                 threads = threads,
             ).also { analyzer = it }
 
-            val json = readyEngine.analyze(samples, sampleRate, channels, onPhase)
+            val json = readyEngine.analyze(
+                samples = samples,
+                sampleRate = sampleRate,
+                channels = channels,
+                onPhase = onPhase,
+                onProgress = onProgress,
+            )
             val result = PitcheeResult.fromJson(json)
             Log.i(
                 TAG,
@@ -83,7 +98,7 @@ class PitcheeRepository(
 
     private fun prepareModels(): File {
         val target = File(appContext.noBackupFilesDir, MODELS_DIRECTORY)
-        if (File(target, READY_MARKER).readTextOrNull() == MODEL_VERSION) return target
+        if (File(target, READY_MARKER).readTextOrNull() == MODEL_CACHE_VERSION) return target
 
         val staging = File(appContext.cacheDir, "$MODELS_DIRECTORY-staging")
         staging.deleteRecursively()
@@ -94,7 +109,7 @@ class PitcheeRepository(
                     File(staging, name).outputStream().use(input::copyTo)
                 }
             }
-            File(staging, READY_MARKER).writeText(MODEL_VERSION)
+            File(staging, READY_MARKER).writeText(MODEL_CACHE_VERSION)
             target.deleteRecursively()
             check(staging.renameTo(target)) { "无法提交模型缓存" }
         } catch (error: Throwable) {
@@ -112,7 +127,8 @@ class PitcheeRepository(
         const val TAG = "PitcheeRepository"
         const val MODELS_DIRECTORY = "pitchee-models"
         const val READY_MARKER = ".ready"
-        const val MODEL_VERSION = "2026-09"
+        // Changes when packaged model bytes change, even if Core's model version does not.
+        const val MODEL_CACHE_VERSION = "2026-09-native-windows"
 
         val MODEL_FILES = listOf(
             "SileroVAD.onnx",

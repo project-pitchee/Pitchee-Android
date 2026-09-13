@@ -1,13 +1,19 @@
 package io.rovly.pitchee.ui
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,12 +27,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -53,12 +59,24 @@ internal fun ScoreResultContent(
 
 @Composable
 private fun ScoreHero(result: PitcheeResult, insight: ScoreInsight) {
-    val score = result.composite.finalScore
-    val scoreColor = feminineScoreColor(score)
+    val score = result.composite.finalScore.coerceIn(0.0, 100.0)
+    val masculineScore = 100.0 - score
+    val feminineColor = MaterialTheme.colorScheme.primary
+    val masculineColor = Color(0xFF3B73D9)
+    val feminineSize by animateDpAsState(
+        targetValue = (92f + score.toFloat() * 0.68f).dp,
+        animationSpec = spring(dampingRatio = 0.76f, stiffness = 240f),
+        label = "feminine-score-size",
+    )
+    val masculineSize by animateDpAsState(
+        targetValue = (92f + masculineScore.toFloat() * 0.68f).dp,
+        animationSpec = spring(dampingRatio = 0.76f, stiffness = 240f),
+        label = "masculine-score-size",
+    )
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = scoreColor.copy(alpha = 0.14f),
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
         ),
     ) {
         Column(
@@ -68,47 +86,36 @@ private fun ScoreHero(result: PitcheeResult, insight: ScoreInsight) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = "女性化综合分",
+                text = "声音指数",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
             Box(
-                modifier = Modifier.size(184.dp),
-                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(232.dp),
             ) {
-                Canvas(Modifier.matchParentSize()) {
-                    val stroke = 14.dp.toPx()
-                    drawArc(
-                        color = scoreColor.copy(alpha = 0.18f),
-                        startAngle = -90f,
-                        sweepAngle = 360f,
-                        useCenter = false,
-                        style = Stroke(width = stroke, cap = StrokeCap.Round),
-                    )
-                    drawArc(
-                        color = scoreColor,
-                        startAngle = -90f,
-                        sweepAngle = (score / 100.0 * 360.0).toFloat(),
-                        useCenter = false,
-                        style = Stroke(width = stroke, cap = StrokeCap.Round),
-                    )
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "%.1f".format(score),
-                        style = MaterialTheme.typography.displayLarge,
-                        fontWeight = FontWeight.Black,
-                        color = scoreColor,
-                    )
-                    Text(
-                        text = "/ 100",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                ScoreIndexCircle(
+                    label = "男性化指数",
+                    score = masculineScore,
+                    color = masculineColor,
+                    size = masculineSize,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .offset(x = (-34).dp, y = 32.dp),
+                )
+                ScoreIndexCircle(
+                    label = "女性化指数",
+                    score = score,
+                    color = feminineColor,
+                    size = feminineSize,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .offset(x = 34.dp, y = (-32).dp),
+                )
             }
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(8.dp))
             Text(
                 text = insight.headline,
                 modifier = Modifier.fillMaxWidth(),
@@ -116,6 +123,44 @@ private fun ScoreHero(result: PitcheeResult, insight: ScoreInsight) {
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
             )
+        }
+    }
+}
+
+@Composable
+private fun ScoreIndexCircle(
+    label: String,
+    score: Double,
+    color: Color,
+    size: androidx.compose.ui.unit.Dp,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier
+            .size(size)
+            .border(BorderStroke(1.5.dp, color.copy(alpha = 0.42f)), CircleShape),
+        shape = CircleShape,
+        color = color.copy(alpha = 0.16f),
+        contentColor = color,
+        shadowElevation = 8.dp,
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "%.1f%%".format(score),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Black,
+                )
+            }
         }
     }
 }
@@ -141,7 +186,7 @@ private fun RuleCard(result: PitcheeResult, insight: ScoreInsight) {
     ) {
         Column(Modifier.padding(20.dp)) {
             Text(
-                text = "本次命中的规则",
+                text = "评分规则",
                 style = MaterialTheme.typography.labelLarge,
                 color = contentColor.copy(alpha = 0.72f),
             )
@@ -267,7 +312,7 @@ private fun BottleneckCard(insight: ScoreInsight) {
     ) {
         Column(Modifier.padding(20.dp)) {
             Text(
-                text = "最需要改善",
+                text = "主要短板",
                 style = MaterialTheme.typography.labelLarge,
                 color = contentColor.copy(alpha = 0.72f),
             )
@@ -303,7 +348,7 @@ private fun MetricsCard(result: PitcheeResult, insight: ScoreInsight) {
     ) {
         Column(Modifier.padding(20.dp)) {
             Text(
-                text = "组成指标",
+                text = "指标",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -369,7 +414,7 @@ private fun MetricRow(
                         contentColor = color,
                     ) {
                         Text(
-                            text = "重点",
+                            text = "最低",
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,

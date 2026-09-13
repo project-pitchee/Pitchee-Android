@@ -189,3 +189,8 @@ private fun JSONObject.nullableDouble(name: String): Double? =
 
 private inline fun <T> JSONArray.mapObjects(transform: (JSONObject) -> T): List<T> =
     List(length()) { transform(getJSONObject(it)) }
+
+fun PitcheeResult.hasSpeechSecondsAtLeast(minimumSeconds: Double): Boolean {
+    require(minimumSeconds >= 0.0) { "minimumSeconds must not be negative" }
+    return vad.speechSeconds >= minimumSeconds
+}
