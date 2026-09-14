@@ -15,7 +15,7 @@
     <string name="analysis_inference_title">推理你的声音</string>
     <string name="analysis_powered_by">Power by PitcheeCore C++</string>
     <string name="click_to_record">点击开始录制</string>
-    <string name="recording_elapsed">正在录音 · %1$.1f 秒</string>
+    <string name="recording_elapsed">正在录音，%1$.1f 秒</string>
     <string name="analysis_phase_audio">正在读取录音</string>
     <string name="analysis_phase_models">正在加载模型</string>
     <string name="analysis_phase_inference">正在分析声音</string>
@@ -44,7 +44,7 @@
     <string name="about_privacy_title">隐私</string>
     <string name="about_privacy_body">录音和模型推理全部在设备本地完成。Pitchee 不会上传你的录音，也不要求创建账号。</string>
     <string name="about_engine_title">分析引擎</string>
-    <string name="about_engine_body">PitcheeCore 0.1.0 · ONNX Runtime 1.24.2 · 模型版本 2026‑09</string>
+    <string name="about_engine_body">PitcheeCore 0.1.0，ONNX Runtime 1.24.2，模型版本 2026‑09</string>
     <string name="about_disclaimer_title">使用说明</string>
     <string name="about_disclaimer_body">分数用于训练反馈和趋势观察，不应作为性别身份鉴定、医疗诊断或其他高风险决策的依据。</string>
 </resources>

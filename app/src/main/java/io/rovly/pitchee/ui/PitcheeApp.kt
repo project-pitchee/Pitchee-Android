@@ -12,6 +12,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -130,6 +131,7 @@ fun PitcheeApp() {
                 PitcheeDestination.ABOUT -> AboutScreen()
                 PitcheeDestination.SCORE_RULES -> ScoreRulesPage(
                     result = remember { demoRuleResult() },
+                    previousScore = 52.0,
                     onBack = null,
                 )
             }
@@ -223,11 +225,16 @@ private fun RecordAnalysisScreen() {
         if (errorMessage != null) snackbarHostState.showSnackbar(errorMessage)
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
         when (val current = state) {
             is RecordUiState.Success -> {
                 AnimatedContent(
                     targetState = showingRules,
+                    modifier = Modifier.fillMaxSize(),
                     transitionSpec = {
                         if (targetState) {
                             slideInHorizontally(
@@ -252,6 +259,7 @@ private fun RecordAnalysisScreen() {
                     if (rulesVisible) {
                         ScoreRulesPage(
                             result = current.result,
+                            previousScore = current.previousScore,
                             onBack = { showingRules = false },
                         )
                     } else {
@@ -343,6 +351,7 @@ private fun RecordAnalysisScreen() {
 @Composable
 private fun ScoreRulesPage(
     result: PitcheeResult,
+    previousScore: Double?,
     onBack: (() -> Unit)?,
 ) {
     if (onBack != null) {
@@ -370,7 +379,10 @@ private fun ScoreRulesPage(
                 subtitle = "结合本次指标查看实际计算过程",
             )
             Spacer(Modifier.height(20.dp))
-            ScoreRulesContent(result)
+            ScoreRulesContent(
+                result = result,
+                previousScore = previousScore,
+            )
         }
     }
 }

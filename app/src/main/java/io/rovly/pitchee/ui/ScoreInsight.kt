@@ -98,7 +98,7 @@ data class ScoreInsight(
                 ruleName = name,
                 ruleDescription = description,
                 ruleImpact = if (result.composite.limited && reduction > 0.05) {
-                    "封顶 ${cap?.let { "%.0f".format(it) } ?: "--"} · 实际压低 %.1f 分"
+                    "封顶 ${cap?.let { "%.0f".format(it) } ?: "--"}，实际压低 %.1f 分"
                         .format(reduction)
                 } else {
                     "规则上限 ${cap?.let { "%.0f".format(it) } ?: "--"}，本次未继续压低"
