@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="pitchee_pink">#FFB84A6B</color>
-    <color name="pitchee_pink_dark">#FF8E3451</color>
-    <color name="pitchee_pink_light">#FFFFB1C8</color>
-    <color name="pitchee_surface">#FFFFF8F9</color>
-    <color name="pitchee_secondary">#FF5B6FAF</color>
+    <color name="pitchee_pink">#FFCD5B2E</color>
+    <color name="pitchee_pink_dark">#FF8F3518</color>
+    <color name="pitchee_pink_light">#FFFFB59A</color>
+    <color name="pitchee_surface">#FFFFF8F5</color>
+    <color name="pitchee_secondary">#FF3F6C68</color>
     <color name="white">#FFFFFFFF</color>
 </resources>

@@ -188,8 +188,8 @@ private fun PassCard(onOpenRules: () -> Unit) {
         label = "评估结果",
         title = "你的声音很pass",
         description = "本次没有触发主要短板规则。",
-        containerColor = Color(0xFFDDF6E4),
-        contentColor = Color(0xFF116B3A),
+        containerColor = if (darkTheme) Color(0xFF123D29) else Color(0xFFDDF6E4),
+        contentColor = if (darkTheme) Color(0xFFA8E6C0) else Color(0xFF116B3A),
         actionContainerColor = if (darkTheme) Color(0xFF3F9D6B) else Color(0xFF1F6F43),
         actionContentColor = Color.White,
         onOpenRules = onOpenRules,
@@ -525,10 +525,9 @@ private fun BottleneckCard(
 @Composable
 private fun MetricsCard(result: PitcheeResult, insight: ScoreInsight) {
     var expanded by rememberSaveable { mutableStateOf(false) }
-    val darkTheme = isSystemInDarkTheme()
-    val cardColor = if (darkTheme) Color(0xFF4A344C) else Color(0xFFD8BFD8)
-    val toggleColor = if (darkTheme) Color(0xFFB58CBE) else Color(0xFFB89BC7)
-    val toggleContentColor = if (darkTheme) Color(0xFF26152A) else Color(0xFF321530)
+    val cardColor = MaterialTheme.colorScheme.tertiaryContainer
+    val toggleColor = MaterialTheme.colorScheme.tertiary
+    val toggleContentColor = MaterialTheme.colorScheme.onTertiary
     val standard = result.vfp.standardScore
     val naturalness = result.naturalness.score
     val f0 = result.f0.meanHz
