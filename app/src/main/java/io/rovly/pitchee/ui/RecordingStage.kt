@@ -9,8 +9,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
@@ -262,8 +260,8 @@ internal fun RecordingStage(
                             AnimatedContent(
                                 targetState = mode,
                                 transitionSpec = {
-                                    (scaleIn(initialScale = 0.55f) + fadeIn()) togetherWith
-                                        (scaleOut(targetScale = 0.55f) + fadeOut())
+                                    scaleIn(initialScale = 0.55f) togetherWith
+                                        scaleOut(targetScale = 0.55f)
                                 },
                                 label = "record-button-content",
                             ) { currentMode ->

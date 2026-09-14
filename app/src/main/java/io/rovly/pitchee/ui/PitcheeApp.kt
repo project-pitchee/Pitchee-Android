@@ -7,6 +7,11 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
@@ -88,11 +94,21 @@ fun PitcheeApp() {
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                tonalElevation = 0.dp,
+            ) {
                 destinations.forEachIndexed { index, destination ->
                     NavigationBarItem(
                         selected = selectedIndex == index,
                         onClick = { selectedIndex = index },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
                         icon = {
                             Icon(
                                 painter = painterResource(destination.iconRes),
@@ -250,38 +266,62 @@ private fun RecordAnalysisScreen() {
     Box(modifier = Modifier.fillMaxSize()) {
         when (val current = state) {
             is RecordUiState.Success -> {
-                if (showingRules) {
-                    ScoreRulesPage(
-                        result = current.result,
-                        onBack = { showingRules = false },
-                    )
-                } else {
-                    val animateScore = remember(current.scoreAnimationToken) {
-                        viewModel.consumeScoreAnimation(current.scoreAnimationToken)
-                    }
-                    ScreenColumn {
-                        ScoreResultContent(
-                            result = current.result,
-                            previousScore = current.previousScore,
-                            animateScore = animateScore,
-                            onOpenRules = { showingRules = true },
-                        ) {
-                            RecordedAudioTimeline(
-                                audio = current.audio,
+                AnimatedContent(
+                    targetState = showingRules,
+                    transitionSpec = {
+                        if (targetState) {
+                            slideInHorizontally(
+                                animationSpec = spring(dampingRatio = 0.84f, stiffness = 280f),
+                                initialOffsetX = { it / 2 },
+                            ) togetherWith slideOutHorizontally(
+                                animationSpec = spring(dampingRatio = 0.9f, stiffness = 320f),
+                                targetOffsetX = { -it / 3 },
+                            )
+                        } else {
+                            slideInHorizontally(
+                                animationSpec = spring(dampingRatio = 0.84f, stiffness = 280f),
+                                initialOffsetX = { -it / 3 },
+                            ) togetherWith slideOutHorizontally(
+                                animationSpec = spring(dampingRatio = 0.9f, stiffness = 320f),
+                                targetOffsetX = { it / 2 },
                             )
                         }
-                        Spacer(Modifier.height(12.dp))
-                        TextButton(
-                            onClick = {
-                                viewModel.reset()
-                                startRecording()
-                            },
-                            colors = ButtonDefaults.textButtonColors(
-                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            ),
-                            modifier = Modifier.align(Alignment.CenterHorizontally),
-                        ) {
-                            Text("重新录音")
+                    },
+                    label = "score-rules-page",
+                ) { rulesVisible ->
+                    if (rulesVisible) {
+                        ScoreRulesPage(
+                            result = current.result,
+                            onBack = { showingRules = false },
+                        )
+                    } else {
+                        val animateScore = remember(current.scoreAnimationToken) {
+                            viewModel.consumeScoreAnimation(current.scoreAnimationToken)
+                        }
+                        ScreenColumn {
+                            ScoreResultContent(
+                                result = current.result,
+                                previousScore = current.previousScore,
+                                animateScore = animateScore,
+                                onOpenRules = { showingRules = true },
+                            ) {
+                                RecordedAudioTimeline(
+                                    audio = current.audio,
+                                )
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            TextButton(
+                                onClick = {
+                                    viewModel.reset()
+                                    startRecording()
+                                },
+                                colors = ButtonDefaults.textButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                ),
+                                modifier = Modifier.align(Alignment.CenterHorizontally),
+                            ) {
+                                Text("重新录音")
+                            }
                         }
                     }
                 }
@@ -362,7 +402,7 @@ private fun ScoreRulesPage(
             subtitle = "综合分公式、封顶与提升条件",
         )
         Spacer(Modifier.height(20.dp))
-        ScoreRuleCard(result)
+        ScoreRulesContent(result)
     }
 }
 

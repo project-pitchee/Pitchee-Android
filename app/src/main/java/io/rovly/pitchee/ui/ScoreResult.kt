@@ -1,13 +1,15 @@
 package io.rovly.pitchee.ui
 
+import android.util.TypedValue
+import android.view.ViewGroup
+import android.widget.TextView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.layout.Arrangement
@@ -44,14 +46,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import io.rovly.pitchee.data.PitcheeResult
+import io.noties.markwon.Markwon
+import io.noties.markwon.ext.latex.JLatexMathPlugin
+import io.noties.markwon.ext.latex.JLatexMathTheme
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -352,146 +361,275 @@ private fun scoreFontCap(score: Double): TextUnit {
 }
 
 @Composable
-private fun RuleCard(result: PitcheeResult, insight: ScoreInsight) {
-    val containerColor = when (insight.ruleState) {
-        ScoreRuleState.CAPPED -> MaterialTheme.colorScheme.errorContainer
-        ScoreRuleState.BOOSTED -> MaterialTheme.colorScheme.primaryContainer
-        ScoreRuleState.F0_UNAVAILABLE -> MaterialTheme.colorScheme.tertiaryContainer
-        ScoreRuleState.CONTINUOUS -> MaterialTheme.colorScheme.surfaceVariant
-    }
-    val contentColor = when (insight.ruleState) {
-        ScoreRuleState.CAPPED -> MaterialTheme.colorScheme.onErrorContainer
-        ScoreRuleState.BOOSTED -> MaterialTheme.colorScheme.onPrimaryContainer
-        ScoreRuleState.F0_UNAVAILABLE -> MaterialTheme.colorScheme.onTertiaryContainer
-        ScoreRuleState.CONTINUOUS -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
+internal fun ScoreRulesContent(result: PitcheeResult) {
+    val insight = remember(result) { ScoreInsight.from(result) }
+    val currentRule = result.composite.rule
+    var expandedRule by rememberSaveable(currentRule) { mutableStateOf<String?>(currentRule) }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = containerColor),
-    ) {
-        Column(Modifier.padding(20.dp)) {
-            Text(
-                text = "评分规则",
-                style = MaterialTheme.typography.labelLarge,
-                color = contentColor.copy(alpha = 0.72f),
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            text = "本次结果",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = insight.ruleName,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = insight.ruleDescription,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = buildString {
+                append("基础分 %.1f".format(result.composite.baseScore))
+                result.composite.cap?.let { append(" · 上限 %.0f".format(it)) }
+                append(" · 最终 %.1f".format(result.composite.finalScore))
+            },
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = insight.ruleImpact,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(20.dp))
+        Text(
+            text = "计算规则",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = "按源码顺序判断；当前命中的规则默认展开。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+
+        scoringRuleDocs.forEachIndexed { index, rule ->
+            RuleDisclosure(
+                rule = rule,
+                isCurrent = rule.key == currentRule,
+                expanded = expandedRule == rule.key,
+                onToggle = {
+                    expandedRule = if (expandedRule == rule.key) null else rule.key
+                },
             )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = insight.ruleName,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = contentColor,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = insight.ruleDescription,
-                style = MaterialTheme.typography.bodyMedium,
-                color = contentColor,
-            )
-            Spacer(Modifier.height(12.dp))
-            Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = contentColor.copy(alpha = 0.10f),
-                contentColor = contentColor,
-            ) {
-                Text(
-                    text = insight.ruleImpact,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                )
+            if (index != scoringRuleDocs.lastIndex) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 16.dp),
-                color = contentColor.copy(alpha = 0.16f),
-            )
-            Text(
-                text = "综合分公式",
-                style = MaterialTheme.typography.labelLarge,
-                color = contentColor.copy(alpha = 0.72f),
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = "50% 标准音色 + 20% 自然度 + 15% 基频 + 15% 协同",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = contentColor,
-            )
-            Spacer(Modifier.height(14.dp))
-            ScorePath(
-                baseScore = result.composite.baseScore,
-                cap = result.composite.cap,
-                finalScore = result.composite.finalScore,
-                contentColor = contentColor,
-            )
         }
     }
 }
 
 @Composable
-internal fun ScoreRuleCard(result: PitcheeResult) {
-    val insight = remember(result) { ScoreInsight.from(result) }
-    RuleCard(result, insight)
-}
-
-@Composable
-private fun ScorePath(
-    baseScore: Double,
-    cap: Double?,
-    finalScore: Double,
-    contentColor: androidx.compose.ui.graphics.Color,
+private fun RuleDisclosure(
+    rule: ScoringRuleDoc,
+    isCurrent: Boolean,
+    expanded: Boolean,
+    onToggle: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle),
     ) {
-        ScoreStage("基础连续分", "%.1f".format(baseScore), contentColor)
-        Text(
-            text = "→",
-            style = MaterialTheme.typography.labelLarge,
-            color = contentColor.copy(alpha = 0.55f),
-        )
-        ScoreStage(
-            label = "规则限制",
-            value = cap?.let { "≤ %.0f".format(it) } ?: "无",
-            color = contentColor,
-        )
-        Text(
-            text = "→",
-            style = MaterialTheme.typography.labelLarge,
-            color = contentColor.copy(alpha = 0.55f),
-        )
-        ScoreStage("最终得分", "%.1f".format(finalScore), contentColor, emphasized = true)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = rule.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isCurrent) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                    )
+                    if (isCurrent) {
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "当前",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = rule.condition,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                text = if (expanded) "−" else "+",
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically(
+                animationSpec = spring(dampingRatio = 0.8f, stiffness = 260f),
+            ),
+            exit = shrinkVertically(
+                animationSpec = spring(dampingRatio = 0.9f, stiffness = 300f),
+            ),
+        ) {
+            Column(Modifier.padding(bottom = 18.dp)) {
+                Text(
+                    text = "公式",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                FormulaView(latexBlock(rule.formula))
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "本次处理",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = rule.handling,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun ScoreStage(
-    label: String,
-    value: String,
-    color: androidx.compose.ui.graphics.Color,
-    emphasized: Boolean = false,
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = color.copy(alpha = 0.68f),
-        )
-        Text(
-            text = value,
-            style = if (emphasized) {
-                MaterialTheme.typography.titleLarge
-            } else {
-                MaterialTheme.typography.titleMedium
-            },
-            fontWeight = if (emphasized) FontWeight.Black else FontWeight.Bold,
-            color = color,
-        )
+private fun FormulaView(latex: String) {
+    val context = LocalContext.current
+    val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
+    val accentColor = MaterialTheme.colorScheme.primary
+    val markwon = remember(context, textColor) {
+        Markwon.builder(context)
+            .usePlugin(
+                JLatexMathPlugin.create(
+                    18f,
+                    JLatexMathPlugin.BuilderConfigure { builder ->
+                        builder.theme()
+                            .textColor(textColor)
+                            .blockTextColor(textColor)
+                            .blockPadding(JLatexMathTheme.Padding.all(0))
+                    },
+                ),
+            )
+            .build()
     }
+
+    AndroidView(
+        factory = { viewContext ->
+            TextView(viewContext).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                )
+                setTextColor(textColor)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+                setLineSpacing(0f, 1.15f)
+                includeFontPadding = false
+                setPadding(0, 0, 0, 0)
+            }
+        },
+        update = { textView -> markwon.setMarkdown(textView, latex) },
+        modifier = Modifier
+            .fillMaxWidth()
+            .drawBehind {
+                drawRect(
+                    color = accentColor,
+                    size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height),
+                )
+            }
+            .padding(start = 14.dp, top = 8.dp, bottom = 8.dp),
+    )
 }
+
+private fun latexBlock(body: String): String = "\$\\$\n$body\n\$\\$"
+
+private data class ScoringRuleDoc(
+    val key: String,
+    val title: String,
+    val condition: String,
+    val formula: String,
+    val handling: String,
+)
+
+private val scoringRuleDocs = listOf(
+    ScoringRuleDoc(
+        key = "continuous",
+        title = "连续评分",
+        condition = "未命中下列任何封顶或提升规则",
+        formula = """
+            S_r = \frac{S}{100}
+            N_r = \mathrm{clamp}\left(\frac{N - 40}{50}, 0, 1\right)
+            F_r = \mathrm{clamp}\left(\frac{F_0 - 110}{90}, 0, 1\right)
+            base = 100 \times \left(0.50S_r + 0.20N_r + 0.15F_r + 0.15S_rN_rF_r\right)
+        """.trimIndent(),
+        handling = "final_score = base_score。",
+    ),
+    ScoringRuleDoc(
+        key = "pass_boost",
+        title = "达标提升",
+        condition = "F0 > 165 Hz，自然度 N > 80，标准音色 S > 50",
+        formula = """
+            strength = \min\left(\frac{F_0 - 165}{25}, \frac{N - 80}{20}, \frac{S - 50}{30}, 1\right)
+            promoted = 60 + 40 \times strength
+        """.trimIndent(),
+        handling = "若 promoted > base_score，则 final_score = promoted。",
+    ),
+    ScoringRuleDoc(
+        key = "high_f0_stylized_cap",
+        title = "高基频、低自然度封顶",
+        condition = "F0 > 165 Hz 且 N < 50",
+        formula = """final = \min(base, 30)""",
+        handling = "最终分最高为 30。",
+    ),
+    ScoringRuleDoc(
+        key = "low_f0_natural_cap",
+        title = "低基频封顶",
+        condition = "F0 ≤ 165 Hz 且 N ≥ 50",
+        formula = """final = \min(base, 59)""",
+        handling = "最终分最高为 59。",
+    ),
+    ScoringRuleDoc(
+        key = "low_f0_stylized_cap",
+        title = "低基频、低自然度封顶",
+        condition = "F0 ≤ 165 Hz 且 N < 50",
+        formula = """final = \min(base, 20)""",
+        handling = "最终分最高为 20。",
+    ),
+    ScoringRuleDoc(
+        key = "high_f0_male_cap",
+        title = "音色分不足封顶",
+        condition = "F0 > 165 Hz，N ≥ 50 且 S < 50",
+        formula = """final = \min(base, 59)""",
+        handling = "最终分最高为 59。",
+    ),
+    ScoringRuleDoc(
+        key = "f0_unavailable",
+        title = "基频不可用",
+        condition = "未检测到可靠 F0",
+        formula = "final = S",
+        handling = "直接使用标准音色分，不使用连续综合公式。",
+    ),
+)
 
 @Composable
 private fun BottleneckCard(
@@ -561,8 +699,12 @@ private fun MetricsCard(result: PitcheeResult, insight: ScoreInsight) {
             }
             AnimatedVisibility(
                 visible = expanded,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut(),
+                enter = expandVertically(
+                    animationSpec = spring(dampingRatio = 0.82f, stiffness = 280f),
+                ),
+                exit = shrinkVertically(
+                    animationSpec = spring(dampingRatio = 0.9f, stiffness = 320f),
+                ),
             ) {
                 Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 20.dp)) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

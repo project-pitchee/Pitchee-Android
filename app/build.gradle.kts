@@ -141,6 +141,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
+    implementation(libs.markwon.core)
+    implementation(libs.markwon.latex)
     testImplementation(libs.junit)
     testImplementation(libs.json)
     androidTestImplementation(libs.androidx.espresso.core)
