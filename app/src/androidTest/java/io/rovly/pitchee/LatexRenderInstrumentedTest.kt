@@ -18,16 +18,24 @@ class LatexRenderInstrumentedTest {
             .usePlugin(JLatexMathPlugin.create(18f))
             .build()
         val textView = TextView(context)
-        val formula = """
+        val formulas = listOf(
+            """
             $$
-            base = 100 \times \left(0.50S_r + 0.20N_r + 0.15F_r + 0.15S_rN_rF_r\right)
+            N_r = \max\left(0, \min\left(1, \frac{N - 40}{50}\right)\right)
             $$
-        """.trimIndent()
+            """.trimIndent(),
+            """
+            $$
+            strength = \min\left(\frac{F_0 - 165}{25}, \frac{N - 80}{20}, 1\right)
+            $$
+            """.trimIndent(),
+        )
 
-        InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            markwon.setMarkdown(textView, formula)
+        formulas.forEach { formula ->
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                markwon.setMarkdown(textView, formula)
+            }
+            assertTrue(textView.text.isNotEmpty())
         }
-
-        assertTrue(textView.text.isNotEmpty())
     }
 }

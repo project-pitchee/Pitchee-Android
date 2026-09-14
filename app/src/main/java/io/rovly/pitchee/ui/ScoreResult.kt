@@ -364,7 +364,9 @@ private fun scoreFontCap(score: Double): TextUnit {
 internal fun ScoreRulesContent(result: PitcheeResult) {
     val insight = remember(result) { ScoreInsight.from(result) }
     val currentRule = result.composite.rule
-    var expandedRule by rememberSaveable(currentRule) { mutableStateOf<String?>(currentRule) }
+    var otherRulesExpanded by rememberSaveable(currentRule) { mutableStateOf(false) }
+    val currentRuleDoc = scoringRuleDocs.firstOrNull { it.key == currentRule }
+    val otherRuleDocs = scoringRuleDocs.filterNot { it.key == currentRule }
 
     Column(Modifier.fillMaxWidth()) {
         Text(
@@ -401,120 +403,233 @@ internal fun ScoreRulesContent(result: PitcheeResult) {
         )
         Spacer(Modifier.height(20.dp))
         Text(
-            text = "计算规则",
+            text = "本次指标",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
         )
-        Text(
-            text = "按源码顺序判断；当前命中的规则默认展开。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         Spacer(Modifier.height(8.dp))
-
-        scoringRuleDocs.forEachIndexed { index, rule ->
-            RuleDisclosure(
-                rule = rule,
-                isCurrent = rule.key == currentRule,
-                expanded = expandedRule == rule.key,
-                onToggle = {
-                    expandedRule = if (expandedRule == rule.key) null else rule.key
-                },
-            )
-            if (index != scoringRuleDocs.lastIndex) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            }
+        scoreIndicators(result).forEach { indicator ->
+            IndicatorRow(indicator)
+            Spacer(Modifier.height(8.dp))
         }
-    }
-}
+        Spacer(Modifier.height(14.dp))
+        Text(
+            text = "本次命中规则",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.height(6.dp))
 
-@Composable
-private fun RuleDisclosure(
-    rule: ScoringRuleDoc,
-    isCurrent: Boolean,
-    expanded: Boolean,
-    onToggle: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onToggle),
-    ) {
+        currentRuleDoc?.let { rule ->
+            RuleDetails(
+                rule = rule,
+                isCurrent = true,
+            )
+        }
+        Spacer(Modifier.height(18.dp))
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 16.dp),
+                .clickable { otherRulesExpanded = !otherRulesExpanded }
+                .padding(vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = rule.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isCurrent) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                    )
-                    if (isCurrent) {
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "当前",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                }
-                Spacer(Modifier.height(3.dp))
                 Text(
-                    text = rule.condition,
+                    text = "未触发的其他规则",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = "${otherRuleDocs.size} 条规则",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Text(
-                text = if (expanded) "−" else "+",
+                text = if (otherRulesExpanded) "−" else "+",
                 style = MaterialTheme.typography.headlineSmall,
                 color = MaterialTheme.colorScheme.primary,
             )
         }
         AnimatedVisibility(
-            visible = expanded,
+            visible = otherRulesExpanded,
             enter = expandVertically(
-                animationSpec = spring(dampingRatio = 0.8f, stiffness = 260f),
+                animationSpec = spring(dampingRatio = 0.82f, stiffness = 280f),
             ),
             exit = shrinkVertically(
-                animationSpec = spring(dampingRatio = 0.9f, stiffness = 300f),
+                animationSpec = spring(dampingRatio = 0.9f, stiffness = 320f),
             ),
         ) {
-            Column(Modifier.padding(bottom = 18.dp)) {
-                Text(
-                    text = "公式",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(4.dp))
-                FormulaView(latexBlock(rule.formula))
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    text = "本次处理",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = rule.handling,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+            Column {
+                otherRuleDocs.forEachIndexed { index, rule ->
+                    RuleDetails(rule = rule, isCurrent = false)
+                    if (index != otherRuleDocs.lastIndex) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun FormulaView(latex: String) {
+private fun IndicatorRow(indicator: ScoreIndicator) {
+    val passContainer = if (isSystemInDarkTheme()) {
+        Color(0xFF23563A)
+    } else {
+        Color(0xFFDCEFDF)
+    }
+    val passContent = if (isSystemInDarkTheme()) {
+        Color(0xFF9FE0B5)
+    } else {
+        Color(0xFF155F35)
+    }
+    val containerColor = if (indicator.passed) {
+        passContainer
+    } else {
+        MaterialTheme.colorScheme.errorContainer
+    }
+    val contentColor = if (indicator.passed) {
+        passContent
+    } else {
+        MaterialTheme.colorScheme.onErrorContainer
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = containerColor,
+            contentColor = contentColor,
+        ) {
+            Text(
+                text = if (indicator.passed) "✓" else "×",
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = indicator.label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = indicator.value,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Text(
+            text = if (indicator.passed) "未限制" else "限制分数",
+            style = MaterialTheme.typography.labelMedium,
+            color = contentColor,
+        )
+    }
+}
+
+private data class ScoreIndicator(
+    val label: String,
+    val value: String,
+    val passed: Boolean,
+)
+
+private fun scoreIndicators(result: PitcheeResult): List<ScoreIndicator> {
+    val standard = result.vfp.standardScore
+    val naturalness = result.naturalness.score
+    val f0 = result.f0.meanHz
+    val rule = result.composite.rule
+    val standardLimited = when (rule) {
+        "high_f0_male_cap" -> true
+        "continuous" -> standard < 50.0
+        else -> false
+    }
+    val naturalnessLimited = when (rule) {
+        "high_f0_stylized_cap", "low_f0_stylized_cap" -> true
+        "continuous" -> naturalness < 50.0
+        else -> false
+    }
+    val f0Limited = when (rule) {
+        "f0_unavailable", "low_f0_natural_cap", "low_f0_stylized_cap" -> true
+        "continuous" -> f0 == null || f0 <= 165.0
+        else -> false
+    }
+    return listOf(
+        ScoreIndicator("标准音色", "%.1f".format(standard), !standardLimited),
+        ScoreIndicator("自然度", "%.1f".format(naturalness), !naturalnessLimited),
+        ScoreIndicator(
+            label = "平均 F0",
+            value = f0?.let { "%.0f Hz".format(it) } ?: "未检测到",
+            passed = !f0Limited,
+        ),
+    )
+}
+
+@Composable
+private fun RuleDetails(
+    rule: ScoringRuleDoc,
+    isCurrent: Boolean,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = rule.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (isCurrent) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+            )
+            if (isCurrent) {
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "当前命中",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+        Spacer(Modifier.height(5.dp))
+        Text(
+            text = rule.condition,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = "公式",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(5.dp))
+        FormulaView(rule.formulas.map(::latexBlock))
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = "本次处理",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(5.dp))
+        Text(
+            text = rule.handling,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}
+
+@Composable
+private fun FormulaView(formulas: List<String>) {
     val context = LocalContext.current
     val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
     val accentColor = MaterialTheme.colorScheme.primary
@@ -534,21 +649,7 @@ private fun FormulaView(latex: String) {
             .build()
     }
 
-    AndroidView(
-        factory = { viewContext ->
-            TextView(viewContext).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                )
-                setTextColor(textColor)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
-                setLineSpacing(0f, 1.15f)
-                includeFontPadding = false
-                setPadding(0, 0, 0, 0)
-            }
-        },
-        update = { textView -> markwon.setMarkdown(textView, latex) },
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .drawBehind {
@@ -558,16 +659,39 @@ private fun FormulaView(latex: String) {
                 )
             }
             .padding(start = 14.dp, top = 8.dp, bottom = 8.dp),
-    )
+    ) {
+        formulas.forEachIndexed { index, formula ->
+            AndroidView(
+                factory = { viewContext ->
+                    TextView(viewContext).apply {
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                        )
+                        setTextColor(textColor)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+                        setLineSpacing(0f, 1.15f)
+                        includeFontPadding = false
+                        setPadding(0, 0, 0, 0)
+                    }
+                },
+                update = { textView -> markwon.setMarkdown(textView, formula) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (index != formulas.lastIndex) {
+                Spacer(Modifier.height(10.dp))
+            }
+        }
+    }
 }
 
-private fun latexBlock(body: String): String = "\$\\$\n$body\n\$\\$"
+private fun latexBlock(body: String): String = "\$\$\n$body\n\$\$"
 
 private data class ScoringRuleDoc(
     val key: String,
     val title: String,
     val condition: String,
-    val formula: String,
+    val formulas: List<String>,
     val handling: String,
 )
 
@@ -576,57 +700,57 @@ private val scoringRuleDocs = listOf(
         key = "continuous",
         title = "连续评分",
         condition = "未命中下列任何封顶或提升规则",
-        formula = """
-            S_r = \frac{S}{100}
-            N_r = \mathrm{clamp}\left(\frac{N - 40}{50}, 0, 1\right)
-            F_r = \mathrm{clamp}\left(\frac{F_0 - 110}{90}, 0, 1\right)
-            base = 100 \times \left(0.50S_r + 0.20N_r + 0.15F_r + 0.15S_rN_rF_r\right)
-        """.trimIndent(),
+        formulas = listOf(
+            """S_r = \frac{S}{100}""",
+            """N_r = \max\left(0, \min\left(1, \frac{N - 40}{50}\right)\right)""",
+            """F_r = \max\left(0, \min\left(1, \frac{F_0 - 110}{90}\right)\right)""",
+            """base = 100 \times \left(0.50S_r + 0.20N_r + 0.15F_r + 0.15S_rN_rF_r\right)""",
+        ),
         handling = "final_score = base_score。",
     ),
     ScoringRuleDoc(
         key = "pass_boost",
         title = "达标提升",
         condition = "F0 > 165 Hz，自然度 N > 80，标准音色 S > 50",
-        formula = """
-            strength = \min\left(\frac{F_0 - 165}{25}, \frac{N - 80}{20}, \frac{S - 50}{30}, 1\right)
-            promoted = 60 + 40 \times strength
-        """.trimIndent(),
+        formulas = listOf(
+            """strength = \min\left(\frac{F_0 - 165}{25}, \frac{N - 80}{20}, \frac{S - 50}{30}, 1\right)""",
+            """promoted = 60 + 40 \times strength""",
+        ),
         handling = "若 promoted > base_score，则 final_score = promoted。",
     ),
     ScoringRuleDoc(
         key = "high_f0_stylized_cap",
         title = "高基频、低自然度封顶",
         condition = "F0 > 165 Hz 且 N < 50",
-        formula = """final = \min(base, 30)""",
+        formulas = listOf("""final = \min(base, 30)"""),
         handling = "最终分最高为 30。",
     ),
     ScoringRuleDoc(
         key = "low_f0_natural_cap",
         title = "低基频封顶",
         condition = "F0 ≤ 165 Hz 且 N ≥ 50",
-        formula = """final = \min(base, 59)""",
+        formulas = listOf("""final = \min(base, 59)"""),
         handling = "最终分最高为 59。",
     ),
     ScoringRuleDoc(
         key = "low_f0_stylized_cap",
         title = "低基频、低自然度封顶",
         condition = "F0 ≤ 165 Hz 且 N < 50",
-        formula = """final = \min(base, 20)""",
+        formulas = listOf("""final = \min(base, 20)"""),
         handling = "最终分最高为 20。",
     ),
     ScoringRuleDoc(
         key = "high_f0_male_cap",
         title = "音色分不足封顶",
         condition = "F0 > 165 Hz，N ≥ 50 且 S < 50",
-        formula = """final = \min(base, 59)""",
+        formulas = listOf("""final = \min(base, 59)"""),
         handling = "最终分最高为 59。",
     ),
     ScoringRuleDoc(
         key = "f0_unavailable",
         title = "基频不可用",
         condition = "未检测到可靠 F0",
-        formula = "final = S",
+        formulas = listOf("final = S"),
         handling = "直接使用标准音色分，不使用连续综合公式。",
     ),
 )

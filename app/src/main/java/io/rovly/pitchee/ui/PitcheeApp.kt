@@ -12,7 +12,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -36,7 +35,6 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -45,7 +43,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,6 +64,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.rovly.pitchee.R
+import io.rovly.pitchee.data.PitcheeResult
 import space.pitchee.core.PitcheePhase
 import kotlinx.coroutines.launch
 
@@ -77,7 +75,7 @@ private enum class PitcheeDestination(
     PITCH(R.string.nav_pitch, R.drawable.ic_pitch_analysis),
     ANALYSIS(R.string.nav_analysis, R.drawable.ic_model_analysis),
     ABOUT(R.string.nav_about, R.drawable.ic_about),
-    SCORE_TEST(R.string.nav_score_test, R.drawable.ic_model_analysis),
+    SCORE_RULES(R.string.nav_score_test, R.drawable.ic_model_analysis),
 }
 
 @Preview
@@ -89,7 +87,7 @@ fun PitcheeApp() {
         (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
     }
     val destinations = remember(debugBuild) {
-        PitcheeDestination.entries.filter { it != PitcheeDestination.SCORE_TEST || debugBuild }
+        PitcheeDestination.entries.filter { it != PitcheeDestination.SCORE_RULES || debugBuild }
     }
 
     Scaffold(
@@ -130,49 +128,11 @@ fun PitcheeApp() {
                 PitcheeDestination.PITCH -> PitchComingSoonScreen()
                 PitcheeDestination.ANALYSIS -> RecordAnalysisScreen()
                 PitcheeDestination.ABOUT -> AboutScreen()
-                PitcheeDestination.SCORE_TEST -> ScoreTestScreen()
+                PitcheeDestination.SCORE_RULES -> ScoreRulesPage(
+                    result = remember { demoRuleResult() },
+                    onBack = null,
+                )
             }
-        }
-    }
-}
-
-@Composable
-private fun ScoreTestScreen() {
-    var score by rememberSaveable { mutableFloatStateOf(68f) }
-
-    ScreenColumn {
-        ScreenHeader(
-            title = stringResource(R.string.score_test_title),
-            subtitle = stringResource(R.string.score_test_subtitle),
-        )
-        Spacer(Modifier.height(20.dp))
-        ScoreIndexChart(
-            score = score.toDouble(),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(Modifier.height(28.dp))
-        Text(
-            text = stringResource(R.string.score_test_slider_label),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Slider(
-            value = score,
-            onValueChange = { score = it },
-            valueRange = 0f..100f,
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = "女性化 %.1f%%".format(score),
-                style = MaterialTheme.typography.labelLarge,
-            )
-            Text(
-                text = "男性化 %.1f%%".format(100f - score),
-                style = MaterialTheme.typography.labelLarge,
-            )
         }
     }
 }
@@ -382,29 +342,94 @@ private fun RecordAnalysisScreen() {
 
 @Composable
 private fun ScoreRulesPage(
-    result: io.rovly.pitchee.data.PitcheeResult,
-    onBack: () -> Unit,
+    result: PitcheeResult,
+    onBack: (() -> Unit)?,
 ) {
-    BackHandler(onBack = onBack)
-    ScreenColumn {
-        TextButton(
-            onClick = onBack,
-            colors = ButtonDefaults.textButtonColors(
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            ),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-        ) {
-            Text("返回结果")
+    if (onBack != null) {
+        BackHandler(onBack = onBack)
+    }
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
+        ScreenColumn {
+            if (onBack != null) {
+                TextButton(
+                    onClick = onBack,
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                ) {
+                    Text("返回结果")
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+            ScreenHeader(
+                title = "评分规则",
+                subtitle = "结合本次指标查看实际计算过程",
+            )
+            Spacer(Modifier.height(20.dp))
+            ScoreRulesContent(result)
         }
-        Spacer(Modifier.height(8.dp))
-        ScreenHeader(
-            title = "评分规则",
-            subtitle = "综合分公式、封顶与提升条件",
-        )
-        Spacer(Modifier.height(20.dp))
-        ScoreRulesContent(result)
     }
 }
+
+private fun demoRuleResult(): PitcheeResult = PitcheeResult.fromJson(
+    """
+    {
+      "schema_version": 2,
+      "model_version": "preview",
+      "audio": {
+        "source_sample_rate": 48000,
+        "source_channels": 1,
+        "input_seconds": 8.0,
+        "analyzed_seconds": 8.0
+      },
+      "vad": {
+        "segment_count": 1,
+        "speech_seconds": 7.2,
+        "silero_segment_count": 1,
+        "discarded_breath_like_count": 0,
+        "trimmed_segment_count": 0,
+        "segments": [{
+          "start_seconds": 0.2,
+          "end_seconds": 7.4,
+          "speech_start_seconds": 0.0,
+          "speech_end_seconds": 7.2
+        }]
+      },
+      "f0": {
+        "window_seconds": 0.1,
+        "mean_hz": 158.0,
+        "standard_deviation_hz": 12.0,
+        "voiced_frame_count": 600,
+        "voiced_window_count": 60,
+        "windows": []
+      },
+      "vfp": {
+        "vfp_standard_score": 76.0,
+        "window_count": 4,
+        "window_duration_seconds": 1.515,
+        "windows": []
+      },
+      "naturalness": {
+        "score": 68.0,
+        "window_count": 4,
+        "window_duration_seconds": 1.515,
+        "windows": []
+      },
+      "composite": {
+        "base_score": 72.0,
+        "final_score": 59.0,
+        "cap": 59.0,
+        "rule": "low_f0_natural_cap",
+        "limited": true,
+        "boosted": false
+      }
+    }
+    """.trimIndent(),
+)
 
 @Composable
 private fun ErrorCard(message: String) {
