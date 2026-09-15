@@ -30,7 +30,7 @@
     <string name="progress_preparing_naturalness">正在切分自然度片段</string>
     <string name="progress_extracting_naturalness">正在提取自然度特征</string>
     <string name="progress_scoring_naturalness">正在评估自然度</string>
-    <string name="progress_calculating_scores">正在计算最终分数</string>
+    <string name="progress_calculating_scores">正在计算综合分</string>
     <string name="progress_serializing">正在生成本次报告</string>
     <string name="progress_completed">分析完成</string>
     <string name="start_recording">开始录音</string>
