@@ -5,16 +5,21 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Button
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,12 +32,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -130,7 +137,7 @@ internal fun RealtimePitchScreen() {
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 24.dp),
+                .padding(start = 20.dp, end = 104.dp, bottom = 34.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             state.error?.let { error ->
@@ -152,14 +159,12 @@ internal fun RealtimePitchScreen() {
                 )
             }
             if (state.preparing) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 3.dp)
-                Spacer(Modifier.height(8.dp))
                 Text(
                     text = stringResource(R.string.pitch_preparing),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
                 )
-                Spacer(Modifier.height(12.dp))
             } else if (!state.running) {
                 Text(
                     text = stringResource(R.string.pitch_instruction),
@@ -167,18 +172,35 @@ internal fun RealtimePitchScreen() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                 )
-                Spacer(Modifier.height(12.dp))
             }
-            Button(onClick = ::toggleMonitoring) {
-                Text(
-                    text = stringResource(
-                        if (state.running || state.preparing) {
+        }
+
+        FilledIconButton(
+            onClick = ::toggleMonitoring,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(24.dp)
+                .size(72.dp),
+        ) {
+            if (state.preparing) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(28.dp),
+                    strokeWidth = 3.dp,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
+            } else {
+                Icon(
+                    painter = painterResource(
+                        if (state.running) R.drawable.ic_pause else R.drawable.ic_play,
+                    ),
+                    contentDescription = stringResource(
+                        if (state.running) {
                             R.string.pitch_stop_monitoring
                         } else {
                             R.string.pitch_start_monitoring
                         },
                     ),
-                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.size(30.dp),
                 )
             }
         }
@@ -192,96 +214,167 @@ private fun PitchChart(
 ) {
     val lineColor = MaterialTheme.colorScheme.onSurface
     val gridColor = MaterialTheme.colorScheme.outlineVariant
+    val surfaceColor = MaterialTheme.colorScheme.background
+    val averageColor = MaterialTheme.colorScheme.primary
     val feminineColor = Color(0xFFFFB6C1)
     val masculineColor = Color(0xFF6495ED)
+    val latestTimestamp = points.lastOrNull()?.timestampSeconds ?: 0.0
+    val firstTimestamp = latestTimestamp - WINDOW_SECONDS
+    val averageF0 = points.asSequence()
+        .filter { it.timestampSeconds >= firstTimestamp }
+        .mapNotNull { it.f0Hz }
+        .average()
+        .takeIf { it.isFinite() }
+        ?.toFloat()
+    val animatedAverageF0 by animateFloatAsState(
+        targetValue = averageF0 ?: 0f,
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = 90f),
+        label = "average-f0",
+    )
 
-    Canvas(modifier = modifier.fillMaxSize()) {
-        val latestTimestamp = points.lastOrNull()?.timestampSeconds ?: 0.0
-        val firstTimestamp = latestTimestamp - WINDOW_SECONDS
-        val plotTop = 164.dp.toPx()
-        val plotBottom = size.height - 132.dp.toPx()
-        val plotHeight = (plotBottom - plotTop).coerceAtLeast(1f)
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val plotTop = 164.dp
+        val plotBottom = maxHeight - 132.dp
+        val plotHeight = (plotBottom - plotTop).coerceAtLeast(1.dp)
+        val plotLeft = 42.dp
 
-        fun yFor(hz: Float): Float {
-            val normalized = ((hz - MIN_HZ) / (MAX_HZ - MIN_HZ)).coerceIn(0f, 1f)
-            return plotBottom - normalized * plotHeight
-        }
+        fun yFraction(hz: Float): Float =
+            ((hz - MIN_HZ) / (MAX_HZ - MIN_HZ)).coerceIn(0f, 1f)
 
-        val thresholdY = yFor(165f)
-        drawRect(
-            color = feminineColor.copy(alpha = 0.20f),
-            topLeft = Offset.Zero,
-            size = Size(size.width, thresholdY),
-        )
-        drawRect(
-            color = masculineColor.copy(alpha = 0.20f),
-            topLeft = Offset(0f, thresholdY),
-            size = Size(size.width, size.height - thresholdY),
-        )
+        fun yDp(hz: Float) = plotBottom - plotHeight * yFraction(hz)
 
-        listOf(100f, 165f, 230f, 350f).forEach { hz ->
-            val y = yFor(hz)
-            drawLine(
-                color = gridColor.copy(alpha = if (hz == 165f) 0.72f else 0.34f),
-                start = Offset(0f, y),
-                end = Offset(size.width, y),
-                strokeWidth = if (hz == 165f) 2.5.dp.toPx() else 1.dp.toPx(),
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val plotTopPx = plotTop.toPx()
+            val plotBottomPx = plotBottom.toPx()
+            val plotLeftPx = plotLeft.toPx()
+            val plotHeightPx = (plotBottomPx - plotTopPx).coerceAtLeast(1f)
+            fun yFor(hz: Float): Float = plotBottomPx - yFraction(hz) * plotHeightPx
+
+            val thresholdY = yFor(165f)
+            drawRect(
+                color = feminineColor.copy(alpha = 0.20f),
+                topLeft = Offset.Zero,
+                size = Size(size.width, thresholdY),
             )
-        }
-
-        val voiced = points.filter {
-            it.f0Hz != null && it.timestampSeconds >= firstTimestamp
-        }
-        val segments = mutableListOf<List<Offset>>()
-        var currentSegment = mutableListOf<Offset>()
-        var previousTime = Double.NEGATIVE_INFINITY
-        voiced.forEach { point ->
-            val hz = point.f0Hz ?: return@forEach
-            val x = ((point.timestampSeconds - firstTimestamp) / WINDOW_SECONDS)
-                .toFloat()
-                .coerceIn(0f, 1f) * size.width
-            if (currentSegment.isNotEmpty() &&
-                point.timestampSeconds - previousTime > MAX_GAP_SECONDS
-            ) {
-                segments += currentSegment.toList()
-                currentSegment = mutableListOf()
-            }
-            currentSegment += Offset(x, yFor(hz))
-            previousTime = point.timestampSeconds
-        }
-        if (currentSegment.isNotEmpty()) segments += currentSegment.toList()
-
-        segments.forEach { segment ->
-            if (segment.size == 1) {
-                drawCircle(lineColor, radius = 2.2.dp.toPx(), center = segment.first())
-                return@forEach
-            }
-            val path = Path().apply {
-                moveTo(segment.first().x, segment.first().y)
-                for (index in 0 until segment.lastIndex) {
-                    val current = segment[index]
-                    val next = segment[index + 1]
-                    quadraticTo(
-                        current.x,
-                        current.y,
-                        (current.x + next.x) / 2f,
-                        (current.y + next.y) / 2f,
-                    )
-                }
-                lineTo(segment.last().x, segment.last().y)
-            }
-            drawPath(
-                path = path,
-                color = lineColor,
-                style = Stroke(
-                    width = 3.dp.toPx(),
-                    cap = StrokeCap.Round,
-                    join = StrokeJoin.Round,
+            drawRect(
+                color = masculineColor.copy(alpha = 0.20f),
+                topLeft = Offset(0f, thresholdY),
+                size = Size(size.width, size.height - thresholdY),
+            )
+            drawRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        surfaceColor,
+                        surfaceColor.copy(alpha = 0.82f),
+                        surfaceColor.copy(alpha = 0f),
+                    ),
+                    startY = 0f,
+                    endY = plotTopPx,
                 ),
+                topLeft = Offset.Zero,
+                size = Size(size.width, plotTopPx),
             )
-            segment.forEach { point ->
-                drawCircle(lineColor, radius = 1.6.dp.toPx(), center = point)
+
+            listOf(100f, 165f, 230f, 350f).forEach { hz ->
+                val y = yFor(hz)
+                drawLine(
+                    color = gridColor.copy(alpha = if (hz == 165f) 0.72f else 0.34f),
+                    start = Offset(plotLeftPx, y),
+                    end = Offset(size.width, y),
+                    strokeWidth = if (hz == 165f) 2.5.dp.toPx() else 1.dp.toPx(),
+                )
             }
+
+            if (averageF0 != null) {
+                val y = yFor(animatedAverageF0)
+                drawLine(
+                    color = averageColor.copy(alpha = 0.86f),
+                    start = Offset(plotLeftPx, y),
+                    end = Offset(size.width, y),
+                    strokeWidth = 2.5.dp.toPx(),
+                    cap = StrokeCap.Round,
+                )
+            }
+
+            val voiced = points.filter {
+                it.f0Hz != null && it.timestampSeconds >= firstTimestamp
+            }
+            val segments = mutableListOf<List<Offset>>()
+            var currentSegment = mutableListOf<Offset>()
+            var previousTime = Double.NEGATIVE_INFINITY
+            voiced.forEach { point ->
+                val hz = point.f0Hz ?: return@forEach
+                val x = (plotLeftPx + (
+                    (point.timestampSeconds - firstTimestamp) / WINDOW_SECONDS
+                    ).toFloat().coerceIn(0f, 1f) * (size.width - plotLeftPx))
+                if (currentSegment.isNotEmpty() &&
+                    point.timestampSeconds - previousTime > MAX_GAP_SECONDS
+                ) {
+                    segments += currentSegment.toList()
+                    currentSegment = mutableListOf()
+                }
+                currentSegment += Offset(x, yFor(hz))
+                previousTime = point.timestampSeconds
+            }
+            if (currentSegment.isNotEmpty()) segments += currentSegment.toList()
+
+            segments.forEach { segment ->
+                if (segment.size == 1) {
+                    drawCircle(lineColor, radius = 2.2.dp.toPx(), center = segment.first())
+                    return@forEach
+                }
+                val path = Path().apply {
+                    moveTo(segment.first().x, segment.first().y)
+                    for (index in 0 until segment.lastIndex) {
+                        val current = segment[index]
+                        val next = segment[index + 1]
+                        quadraticTo(
+                            current.x,
+                            current.y,
+                            (current.x + next.x) / 2f,
+                            (current.y + next.y) / 2f,
+                        )
+                    }
+                    lineTo(segment.last().x, segment.last().y)
+                }
+                drawPath(
+                    path = path,
+                    color = lineColor,
+                    style = Stroke(
+                        width = 3.dp.toPx(),
+                        cap = StrokeCap.Round,
+                        join = StrokeJoin.Round,
+                    ),
+                )
+                segment.forEach { point ->
+                    drawCircle(lineColor, radius = 1.6.dp.toPx(), center = point)
+                }
+            }
+        }
+
+        listOf(400f, 230f, 165f, 100f, 60f).forEach { hz ->
+            Text(
+                text = "%.0f".format(hz),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .offset(y = yDp(hz) - 8.dp)
+                    .padding(start = 4.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = if (hz == 165f) averageColor else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        if (averageF0 != null) {
+            Text(
+                text = "平均 %.0f Hz".format(animatedAverageF0),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(y = yDp(animatedAverageF0) - 18.dp)
+                    .padding(end = 10.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = averageColor,
+                fontWeight = FontWeight.Bold,
+            )
         }
     }
 }
