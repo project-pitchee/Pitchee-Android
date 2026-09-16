@@ -13,6 +13,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -22,7 +23,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -313,42 +313,34 @@ internal fun RecordingStage(
             )
         }
 
-        Box(
+        ReadingPassageText(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth(),
-        ) {
-            ReadingPassageCard()
-        }
+        )
     }
 }
 
 @Composable
-private fun ReadingPassageCard() {
+private fun ReadingPassageText(modifier: Modifier = Modifier) {
     var selectedIndex by rememberSaveable { mutableIntStateOf(0) }
     val passage = readingPassages[selectedIndex]
-    Surface(
-        onClick = { selectedIndex = (selectedIndex + 1) % readingPassages.size },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(116.dp),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
+    Box(
+        modifier = modifier
+            .padding(bottom = 6.dp)
+            .height(72.dp)
+            .clickable(onClickLabel = "切换语料") {
+                selectedIndex = (selectedIndex + 1) % readingPassages.size
+            },
+        contentAlignment = Alignment.CenterStart,
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = passage.text,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        Text(
+            text = passage.text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
