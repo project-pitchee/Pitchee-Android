@@ -11,7 +11,6 @@
     <string name="pitch_no_voice">等待稳定音高</string>
     <string name="pitch_current_f0">当前基频</string>
     <string name="pitch_preparing">正在准备实时模型</string>
-    <string name="pitch_instruction">保持自然音量，连续发声效果更稳定</string>
     <string name="pitch_start_monitoring">开始实时监测</string>
     <string name="pitch_stop_monitoring">停止监测</string>
     <string name="analysis_inference_title">推理你的声音</string>

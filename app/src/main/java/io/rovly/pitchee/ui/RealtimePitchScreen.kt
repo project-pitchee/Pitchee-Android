@@ -7,9 +7,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,16 +19,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +62,7 @@ internal fun RealtimePitchScreen() {
     val viewModel: PitchViewModel = viewModel(factory = factory)
     val state by viewModel.state.collectAsStateWithLifecycle()
     var permissionDenied by remember { mutableStateOf(false) }
+    var selectedPassageIndex by rememberSaveable { mutableIntStateOf(0) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -137,7 +144,7 @@ internal fun RealtimePitchScreen() {
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(start = 20.dp, end = 104.dp, bottom = 34.dp),
+                .padding(horizontal = 20.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             state.error?.let { error ->
@@ -165,43 +172,76 @@ internal fun RealtimePitchScreen() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                 )
-            } else if (!state.running) {
-                Text(
-                    text = stringResource(R.string.pitch_instruction),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                )
+                Spacer(Modifier.height(10.dp))
             }
-        }
-
-        FilledIconButton(
-            onClick = ::toggleMonitoring,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(24.dp)
-                .size(72.dp),
-        ) {
-            if (state.preparing) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(28.dp),
-                    strokeWidth = 3.dp,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                )
-            } else {
-                Icon(
-                    painter = painterResource(
-                        if (state.running) R.drawable.ic_pause else R.drawable.ic_play,
-                    ),
-                    contentDescription = stringResource(
-                        if (state.running) {
-                            R.string.pitch_stop_monitoring
+            val passage = readingPassages[selectedPassageIndex]
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(72.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(
+                    onClick = {
+                        selectedPassageIndex = (selectedPassageIndex + 1) % readingPassages.size
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(72.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Text(
+                            text = "《${passage.title}》",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                        )
+                        Text(
+                            text = "点击切换语料",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                Spacer(Modifier.size(12.dp))
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(72.dp),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    FilledIconButton(
+                        onClick = ::toggleMonitoring,
+                        modifier = Modifier.size(72.dp),
+                    ) {
+                        if (state.preparing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(28.dp),
+                                strokeWidth = 3.dp,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
                         } else {
-                            R.string.pitch_start_monitoring
-                        },
-                    ),
-                    modifier = Modifier.size(30.dp),
-                )
+                            Icon(
+                                painter = painterResource(
+                                    if (state.running) R.drawable.ic_pause else R.drawable.ic_play,
+                                ),
+                                contentDescription = stringResource(
+                                    if (state.running) {
+                                        R.string.pitch_stop_monitoring
+                                    } else {
+                                        R.string.pitch_start_monitoring
+                                    },
+                                ),
+                                modifier = Modifier.size(30.dp),
+                            )
+                        }
+                    }
+                }
             }
         }
     }
