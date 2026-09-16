@@ -9,6 +9,7 @@
     <string name="pitch_title">实时基频</string>
     <string name="pitch_subtitle">对着麦克风持续发声，实时查看基频变化</string>
     <string name="pitch_no_voice">等待稳定音高</string>
+    <string name="pitch_current_f0">当前基频</string>
     <string name="pitch_preparing">正在准备实时模型</string>
     <string name="pitch_instruction">保持自然音量，连续发声效果更稳定</string>
     <string name="pitch_start_monitoring">开始实时监测</string>

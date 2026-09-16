@@ -31,8 +31,19 @@ data class PitchUiState(
     val points: List<F0Point> = emptyList(),
     val error: String? = null,
 ) {
-    val current: F0Point? get() = points.lastOrNull()
-    val currentHz: Float? get() = current?.f0Hz
+    val currentHz: Float?
+        get() {
+            if (!running) return null
+            val latestTimestamp = points.lastOrNull()?.timestampSeconds ?: return null
+            val lastVoiced = points.asReversed().firstOrNull { it.f0Hz != null } ?: return null
+            return lastVoiced.f0Hz.takeIf {
+                latestTimestamp - lastVoiced.timestampSeconds <= CURRENT_F0_HOLD_SECONDS
+            }
+        }
+
+    private companion object {
+        const val CURRENT_F0_HOLD_SECONDS = 2.0
+    }
 }
 
 class PitchViewModel(
