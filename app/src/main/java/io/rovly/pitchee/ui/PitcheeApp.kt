@@ -186,7 +186,9 @@ private fun RecordAnalysisScreen() {
             is RecordUiState.Success -> {
                 AnimatedContent(
                     targetState = showingRules,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background),
                     transitionSpec = {
                         if (targetState) {
                             slideInHorizontally(
@@ -215,32 +217,37 @@ private fun RecordAnalysisScreen() {
                             onBack = { showingRules = false },
                         )
                     } else {
-                        val animateScore = remember(current.scoreAnimationToken) {
-                            viewModel.consumeScoreAnimation(current.scoreAnimationToken)
-                        }
-                        ScreenColumn {
-                            ScoreResultContent(
-                                result = current.result,
-                                previousScore = current.previousScore,
-                                animateScore = animateScore,
-                                onOpenRules = { showingRules = true },
-                            ) {
-                                RecordedAudioTimeline(
-                                    audio = current.audio,
-                                )
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            color = MaterialTheme.colorScheme.background,
+                        ) {
+                            val animateScore = remember(current.scoreAnimationToken) {
+                                viewModel.consumeScoreAnimation(current.scoreAnimationToken)
                             }
-                            Spacer(Modifier.height(12.dp))
-                            TextButton(
-                                onClick = {
-                                    viewModel.reset()
-                                    startRecording()
-                                },
-                                colors = ButtonDefaults.textButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                ),
-                                modifier = Modifier.align(Alignment.CenterHorizontally),
-                            ) {
-                                Text("重新录音")
+                            ScreenColumn {
+                                ScoreResultContent(
+                                    result = current.result,
+                                    previousScore = current.previousScore,
+                                    animateScore = animateScore,
+                                    onOpenRules = { showingRules = true },
+                                ) {
+                                    RecordedAudioTimeline(
+                                        audio = current.audio,
+                                    )
+                                }
+                                Spacer(Modifier.height(12.dp))
+                                TextButton(
+                                    onClick = {
+                                        viewModel.reset()
+                                        startRecording()
+                                    },
+                                    colors = ButtonDefaults.textButtonColors(
+                                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    ),
+                                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                                ) {
+                                    Text("重新录音")
+                                }
                             }
                         }
                     }

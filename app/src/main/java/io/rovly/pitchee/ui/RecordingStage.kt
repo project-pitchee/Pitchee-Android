@@ -13,10 +13,8 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -153,33 +151,13 @@ internal fun RecordingStage(
         recordingProgress
     }
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 20.dp, vertical = 18.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            text = stringResource(R.string.analysis_inference_title),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-        )
-
-        if (mode == RecordVisualMode.ANALYZING) {
-            Spacer(Modifier.height(10.dp))
-            Text(
-                text = statusText,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-        }
-
         Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
+            modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center,
         ) {
             LiveWaveform(
@@ -194,7 +172,10 @@ internal fun RecordingStage(
                 color = errorColor,
             )
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                modifier = Modifier.size(192.dp),
+                contentAlignment = Alignment.Center,
+            ) {
                 Box(
                     modifier = Modifier.size(132.dp),
                     contentAlignment = Alignment.Center,
@@ -294,9 +275,10 @@ internal fun RecordingStage(
                         }
                     }
                 }
-                Spacer(Modifier.height(18.dp))
                 Box(
-                    modifier = Modifier.height(24.dp),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .height(24.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (mode != RecordVisualMode.ANALYZING) {
@@ -311,14 +293,33 @@ internal fun RecordingStage(
             }
         }
 
-        ReadingPassageCard()
-        Spacer(Modifier.height(10.dp))
         Text(
-            text = stringResource(R.string.analysis_powered_by),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.46f),
+            text = stringResource(R.string.analysis_inference_title),
+            modifier = Modifier.align(Alignment.TopCenter),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
         )
+
+        if (mode == RecordVisualMode.ANALYZING) {
+            Text(
+                text = statusText,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 46.dp),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth(),
+        ) {
+            ReadingPassageCard()
+        }
     }
 }
 
@@ -334,29 +335,17 @@ private fun ReadingPassageCard() {
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "《${passage.title}》",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    text = "点击切换",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(Modifier.height(4.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
             Text(
                 text = passage.text,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 3,
+                maxLines = 4,
                 overflow = TextOverflow.Ellipsis,
             )
         }

@@ -14,7 +14,6 @@
     <string name="pitch_start_monitoring">开始实时监测</string>
     <string name="pitch_stop_monitoring">停止监测</string>
     <string name="analysis_inference_title">推理你的声音</string>
-    <string name="analysis_powered_by">Power by PitcheeCore C++</string>
     <string name="click_to_record">点击开始录制</string>
     <string name="recording_elapsed">正在录音，%1$.1f 秒</string>
     <string name="analysis_phase_audio">正在读取录音</string>
