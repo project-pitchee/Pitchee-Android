@@ -193,38 +193,31 @@ internal fun RealtimePitchScreen() {
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.size(12.dp))
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(72.dp),
-                    contentAlignment = Alignment.CenterEnd,
+                Spacer(Modifier.size(8.dp))
+                FilledIconButton(
+                    onClick = ::toggleMonitoring,
+                    modifier = Modifier.size(72.dp),
                 ) {
-                    FilledIconButton(
-                        onClick = ::toggleMonitoring,
-                        modifier = Modifier.size(72.dp),
-                    ) {
-                        if (state.preparing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(28.dp),
-                                strokeWidth = 3.dp,
-                                color = MaterialTheme.colorScheme.onPrimary,
-                            )
-                        } else {
-                            Icon(
-                                painter = painterResource(
-                                    if (state.running) R.drawable.ic_pause else R.drawable.ic_play,
-                                ),
-                                contentDescription = stringResource(
-                                    if (state.running) {
-                                        R.string.pitch_stop_monitoring
-                                    } else {
-                                        R.string.pitch_start_monitoring
-                                    },
-                                ),
-                                modifier = Modifier.size(30.dp),
-                            )
-                        }
+                    if (state.preparing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(28.dp),
+                            strokeWidth = 3.dp,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(
+                                if (state.running) R.drawable.ic_pause else R.drawable.ic_play,
+                            ),
+                            contentDescription = stringResource(
+                                if (state.running) {
+                                    R.string.pitch_stop_monitoring
+                                } else {
+                                    R.string.pitch_start_monitoring
+                                },
+                            ),
+                            modifier = Modifier.size(30.dp),
+                        )
                     }
                 }
             }
