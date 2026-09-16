@@ -29,6 +29,17 @@ class LatexRenderInstrumentedTest {
             strength = \min\left(\frac{F_0 - 165}{25}, \frac{N - 80}{20}, 1\right)
             $$
             """.trimIndent(),
+            """
+            $$
+            \begin{multline}
+            Base = 100 \times \left(
+            0.50Standard_r + 0.20Naturalness_r
+            \\
+            + 0.15F0_r + 0.15Standard_rNaturalness_rF0_r
+            \right)
+            \end{multline}
+            $$
+            """.trimIndent(),
         )
 
         formulas.forEach { formula ->

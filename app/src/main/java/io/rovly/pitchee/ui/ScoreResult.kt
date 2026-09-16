@@ -730,7 +730,7 @@ private fun FormulaView(formulas: List<String>) {
     val density = LocalDensity.current
     val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
     val accentColor = MaterialTheme.colorScheme.primary
-    val formulaTextSize = with(density) { 24.sp.toPx() }
+    val formulaTextSize = with(density) { 17.sp.toPx() }
     val markwon = remember(context, textColor, formulaTextSize) {
         Markwon.builder(context)
             .usePlugin(
@@ -740,7 +740,7 @@ private fun FormulaView(formulas: List<String>) {
                         builder.theme()
                             .textColor(textColor)
                             .blockTextColor(textColor)
-                            .blockFitCanvas(false)
+                            .blockFitCanvas(true)
                             .blockPadding(JLatexMathTheme.Padding.all(0))
                     },
                 ),
@@ -768,7 +768,7 @@ private fun FormulaView(formulas: List<String>) {
                             ViewGroup.LayoutParams.WRAP_CONTENT,
                         )
                         setTextColor(textColor)
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
                         setLineSpacing(0f, 1.15f)
                         includeFontPadding = false
                         setPadding(0, 0, 0, 0)
@@ -784,7 +784,15 @@ private fun FormulaView(formulas: List<String>) {
     }
 }
 
-private fun latexBlock(body: String): String = "\$\$\n$body\n\$\$"
+private fun latexBlock(body: String): String {
+    val lines = body.lines().filter { it.isNotBlank() }
+    val content = if (lines.size > 1) {
+        "\\begin{multline}\n${lines.joinToString(" \\\\\n")}\n\\end{multline}"
+    } else {
+        lines.single()
+    }
+    return "\$\$\n$content\n\$\$"
+}
 
 private data class ScoringRuleDoc(
     val key: String,
@@ -804,11 +812,10 @@ private val commonScoreFormulas = listOf(
     """Naturalness_r = \max(0, \min(1, N_1))""",
     """F_1 = \frac{F0 - 110}{90}""",
     """F0_r = \max(0, \min(1, F_1))""",
-    """Base_1 = 0.50Standard_r""",
-    """Base_2 = 0.20Naturalness_r""",
-    """Base_3 = 0.15F0_r""",
-    """Base_4 = 0.15Standard_rNaturalness_rF0_r""",
-    """Base = 100 \times \left(Base_1 + Base_2 + Base_3 + Base_4\right)""",
+    """Base = 100 \times \left(
+0.50Standard_r + 0.20Naturalness_r
++ 0.15F0_r + 0.15Standard_rNaturalness_rF0_r
+\right)""",
     """Final = rule(Base, Standard, Naturalness, F0)""",
 )
 
