@@ -376,7 +376,7 @@ private fun ScoreRulesPage(
             }
             ScreenHeader(
                 title = "评分规则",
-                subtitle = "结合本次指标查看实际计算过程",
+                subtitle = "结合本次指标查看综合分的计算过程",
             )
             Spacer(Modifier.height(20.dp))
             ScoreRulesContent(

@@ -86,7 +86,7 @@ internal fun ScoreResultContent(
         animate = animateScore,
         modifier = Modifier.fillMaxWidth(),
     )
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(18.dp))
     audioPlayer()
     Spacer(Modifier.height(12.dp))
     if (insight.hasBottleneck) {
@@ -507,13 +507,13 @@ private fun ScoreDelta(
 private fun CommonFormulaSection() {
     Column(Modifier.fillMaxWidth()) {
         Text(
-            text = "公共定义与基础公式",
+            text = "基础公式",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            text = "所有封顶和提升规则都先使用这组连续评分结果。",
+            text = "所有规则以此基础计算",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -521,13 +521,12 @@ private fun CommonFormulaSection() {
         FormulaView(commonScoreFormulas.map(::latexBlock))
         Spacer(Modifier.height(12.dp))
         Text(
-            text = "S 代表标准音色分，范围 0 到 100。\n" +
-                "N 代表自然度得分，范围 0 到 100。\n" +
-                "F 代表有效语音的平均基频，单位是 Hz。\n" +
-                "S_r、N_r、F_r 是三组归一化分数，范围 0 到 1。\n" +
-                "B 是应用封顶或提升之前的综合基础分。\n" +
-                "promoted 是触发达标提升时计算出的候选综合分。\n" +
-                "C 是最终显示的综合分。",
+            text = "Standard 代表标准音色分，范围 0 到 100。\n" +
+                "Naturalness 代表自然度分，范围 0 到 100。\n" +
+                "F0 代表平均基频，单位是 Hz。\n" +
+                "三个 _r 变量是归一化分数，范围 0 到 1。\n" +
+                "Base 是封顶或提升之前的综合基础分。\n" +
+                "Final 是最终显示的综合分。",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * 1.35f,
@@ -704,7 +703,7 @@ private fun RuleDetails(
         )
         Spacer(Modifier.height(16.dp))
         Text(
-            text = "公式",
+            text = "计算公式",
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -733,7 +732,7 @@ private fun FormulaView(formulas: List<String>) {
         Markwon.builder(context)
             .usePlugin(
                 JLatexMathPlugin.create(
-                    28f,
+                    38f,
                     JLatexMathPlugin.BuilderConfigure { builder ->
                         builder.theme()
                             .textColor(textColor)
@@ -794,83 +793,85 @@ private data class ScoringRuleDoc(
 )
 
 private val commonScoreFormulas = listOf(
-    """S = vfp\_standard\_score""",
-    """N = naturalness\_score""",
-    """F = mean\_f0\_hz""",
-    """S_r = \frac{S}{100}""",
-    """N_r = \max\left(0, \min\left(1, \frac{N - 40}{50}\right)\right)""",
-    """F_r = \max\left(0, \min\left(1, \frac{F - 110}{90}\right)\right)""",
-    """B_1 = 0.50S_r""",
-    """B_2 = 0.20N_r""",
-    """B_3 = 0.15F_r""",
-    """B_4 = 0.15S_rN_rF_r""",
-    """B = 100 \times \left(B_1 + B_2 + B_3 + B_4\right)""",
-    """C = rule(B, S, N, F)""",
+    """Standard = vfp\_standard\_score""",
+    """Naturalness = naturalness\_score""",
+    """F0 = mean\_f0\_hz""",
+    """Standard_r = \frac{Standard}{100}""",
+    """N_1 = \frac{Naturalness - 40}{50}""",
+    """Naturalness_r = \max(0, \min(1, N_1))""",
+    """F_1 = \frac{F0 - 110}{90}""",
+    """F0_r = \max(0, \min(1, F_1))""",
+    """Base_1 = 0.50Standard_r""",
+    """Base_2 = 0.20Naturalness_r""",
+    """Base_3 = 0.15F0_r""",
+    """Base_4 = 0.15Standard_rNaturalness_rF0_r""",
+    """Base = 100 \times \left(Base_1 + Base_2 + Base_3 + Base_4\right)""",
+    """Final = rule(Base, Standard, Naturalness, F0)""",
 )
 
 private val scoringRuleDocs = listOf(
     ScoringRuleDoc(
         key = "continuous",
         title = "连续评分",
-        guidance = "这次没有触发特殊限制。保持现在的节奏再录一次，就能看到趋势变化。",
+        guidance = "这次没有触发特殊限制。保持现在的节奏再录一次，就能观察趋势变化。",
         condition = "未命中下列任何封顶或提升规则",
-        formulas = listOf("""C = B"""),
-        handling = "综合分直接采用 B。",
+        formulas = listOf("""Final = Base"""),
+        handling = "综合分采用 Base。",
     ),
     ScoringRuleDoc(
         key = "pass_boost",
-        title = "达标提升",
+        title = "加分",
         guidance = "三项指标都已经过线。继续用现在舒服的音高和语速朗读，稳定度会更容易保持。",
-        condition = "F > 165，N > 80，S > 50",
+        condition = "F0 > 165，Naturalness > 80，Standard > 50",
         formulas = listOf(
-            """s_F = \frac{F - 165}{25}""",
-            """s_N = \frac{N - 80}{20}""",
-            """s_S = \frac{S - 50}{30}""",
-            """strength = \min(s_F, s_N, s_S, 1)""",
+            """s_F0 = \frac{F0 - 165}{25}""",
+            """s_N = \frac{Naturalness - 80}{20}""",
+            """s_S = \frac{Standard - 50}{30}""",
+            """strength = \min(s_F0, s_N, s_S, 1)""",
             """promoted = 60 + 40strength""",
-            """C = \max(B, promoted)""",
+            """Final = \max(Base, promoted)""",
         ),
-        handling = "如果 promoted 高于 B，综合分采用 promoted。",
+        handling = "综合分最高为 100。\n如果 promoted > Base，综合分采用 promoted。",
     ),
     ScoringRuleDoc(
         key = "high_f0_stylized_cap",
         title = "高基频、低自然度封顶",
-        guidance = "音高已经上去了，但自然度还没跟上。下次先放松语气，别刻意抬高音调。",
-        condition = "F > 165，N < 50",
-        formulas = listOf("""C = \min(B, 30)"""),
-        handling = "综合分最高为 30。先让朗读自然，再继续提高音高。",
+        guidance = "音高已经上去了，但自然度还没跟上。下一次先放松语气，不必刻意抬高音调。",
+        condition = "F0 > 165，Naturalness < 50",
+        formulas = listOf("""Final = \min(Base, 30)"""),
+        handling = "综合分最高为 30。\n请尝试自然说话，再提高音高。",
     ),
     ScoringRuleDoc(
         key = "low_f0_natural_cap",
         title = "低基频封顶",
         guidance = "自然度已经不错，接下来把注意力放在音高上。声音不用抬高，保持舒服就好。",
-        condition = "F ≤ 165，N ≥ 50",
-        formulas = listOf("""C = \min(B, 59)"""),
-        handling = "综合分最高为 59。下一次试着用稍高但仍舒服的音调朗读。",
+        condition = "F0 ≤ 165，Naturalness ≥ 50",
+        formulas = listOf("""Final = \min(Base, 59)"""),
+        handling = "综合分最高为 59。\n下一次试着用稍高但仍舒服的音调朗读。",
     ),
     ScoringRuleDoc(
         key = "low_f0_stylized_cap",
-        title = "低基频、低自然度封顶",
-        guidance = "这次音高和自然度都需要照顾。先放慢一点，完整自然地读完句子。",
-        condition = "F ≤ 165，N < 50",
-        formulas = listOf("""C = \min(B, 20)"""),
-        handling = "综合分最高为 20。先把朗读放松，再逐步提高音高。",
+        title = "低基频、低自然度",
+        guidance = "这次音高和自然度都需要照顾。先放慢一点，完整自然地读完整个句子。",
+        condition = "F0 ≤ 165，Naturalness < 50",
+        formulas = listOf("""Final = \min(Base, 20)"""),
+        handling = "综合分最高为 20。\n先把朗读放松，再逐步提高音高。",
     ),
     ScoringRuleDoc(
         key = "high_f0_male_cap",
-        title = "音色分不足封顶",
+        title = "音色分不足",
         guidance = "音高和自然度已经达标，接下来重点练音色。试着让声音更明亮、更轻松。",
-        condition = "F > 165，N ≥ 50，S < 50",
-        formulas = listOf("""C = \min(B, 59)"""),
-        handling = "综合分最高为 59。下一次重点观察 S 的变化。",
+        condition = "F0 > 165，Naturalness ≥ 50，Standard < 50",
+        formulas = listOf("""Final = \min(Base, 59)"""),
+        handling = "综合分最高为 59。\n下一次重点观察 Standard 的变化。",
     ),
     ScoringRuleDoc(
         key = "f0_unavailable",
         title = "基频不可用",
-        guidance = "这次没有识别到稳定基频。下次可以离麦克风近一点，连续朗读至少 5 秒。",
-        condition = "F 不可用",
-        formulas = listOf("C = S"),
-        handling = "综合分直接采用标准音色分 S。",
+        guidance = "没有识别到稳定基频，下次可以离麦克风近一点。",
+        condition = "F0 不可用",
+        formulas = listOf("Final = Standard"),
+        handling = "综合分直接采用标准音色分 Standard。",
     ),
 )
 
