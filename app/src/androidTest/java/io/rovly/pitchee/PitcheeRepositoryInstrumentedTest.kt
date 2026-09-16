@@ -9,6 +9,8 @@ import space.pitchee.core.PitcheeProgressStage
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.PI
+import kotlin.math.sin
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -17,6 +19,32 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class PitcheeRepositoryInstrumentedTest {
+    @Test
+    fun emitsRealtimeF0FramesForTone() = runBlocking {
+        val repository = PitcheeRepository(
+            InstrumentationRegistry.getInstrumentation().targetContext
+        )
+        val stream = repository.createRealtimeF0()
+        try {
+            val samples = FloatArray(16_000) { index ->
+                sin(2.0 * PI * 180.0 * index / 16_000.0).toFloat() * 0.35f
+            }
+            var frameCount = 0
+            var voicedCount = 0
+            samples.asList().chunked(256).forEach { chunk ->
+                frameCount += stream.process(chunk.toFloatArray()) { _, _, _, voiced ->
+                    if (voiced) voicedCount++
+                }.toInt()
+            }
+
+            assertTrue("Realtime stream returned no frames", frameCount > 0)
+            assertTrue("Expected voiced F0 frames", voicedCount > 0)
+        } finally {
+            stream.close()
+            repository.close()
+        }
+    }
+
     @Test
     fun handlesPcmWavAndSuccessfulSpeechAnalysis() = runBlocking {
         val repository = PitcheeRepository(

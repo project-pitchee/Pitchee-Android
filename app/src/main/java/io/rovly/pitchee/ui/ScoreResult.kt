@@ -51,6 +51,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -726,13 +727,15 @@ private fun RuleDetails(
 @Composable
 private fun FormulaView(formulas: List<String>) {
     val context = LocalContext.current
+    val density = LocalDensity.current
     val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
     val accentColor = MaterialTheme.colorScheme.primary
-    val markwon = remember(context, textColor) {
+    val formulaTextSize = with(density) { 24.sp.toPx() }
+    val markwon = remember(context, textColor, formulaTextSize) {
         Markwon.builder(context)
             .usePlugin(
                 JLatexMathPlugin.create(
-                    38f,
+                    formulaTextSize,
                     JLatexMathPlugin.BuilderConfigure { builder ->
                         builder.theme()
                             .textColor(textColor)

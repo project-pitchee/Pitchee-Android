@@ -126,7 +126,7 @@ fun PitcheeApp() {
                 .padding(innerPadding),
         ) {
             when (destinations[selectedIndex]) {
-                PitcheeDestination.PITCH -> PitchComingSoonScreen()
+                PitcheeDestination.PITCH -> RealtimePitchScreen()
                 PitcheeDestination.ANALYSIS -> RecordAnalysisScreen()
                 PitcheeDestination.ABOUT -> AboutScreen()
                 PitcheeDestination.SCORE_RULES -> ScoreRulesPage(
@@ -136,54 +136,6 @@ fun PitcheeApp() {
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun PitchComingSoonScreen() {
-    ScreenColumn {
-        ScreenHeader(
-            title = stringResource(R.string.pitch_title),
-            subtitle = stringResource(R.string.pitch_subtitle),
-        )
-        Spacer(Modifier.height(32.dp))
-        Surface(
-            modifier = Modifier
-                .size(112.dp)
-                .clip(CircleShape)
-                .align(Alignment.CenterHorizontally),
-            color = MaterialTheme.colorScheme.primaryContainer,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_pitch_analysis),
-                    contentDescription = null,
-                    modifier = Modifier.size(56.dp),
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-            }
-        }
-        Spacer(Modifier.height(24.dp))
-        Text(
-            text = stringResource(R.string.pitch_coming_soon),
-            modifier = Modifier.fillMaxWidth(),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = stringResource(R.string.pitch_coming_soon_body),
-            modifier = Modifier.fillMaxWidth(),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(32.dp))
-        InformationCard(
-            title = stringResource(R.string.pitch_permission_title),
-            body = stringResource(R.string.pitch_permission_body),
-        )
     }
 }
 

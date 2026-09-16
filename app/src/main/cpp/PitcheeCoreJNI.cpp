@@ -25,6 +25,12 @@ struct ProgressBridge {
     jmethodID method;
 };
 
+struct F0FrameBridge {
+    JNIEnv* env;
+    jobject callback;
+    jmethodID method;
+};
+
 void report_progress(const pitchee_progress_t* progress, void* user_data) {
     auto* bridge = static_cast<ProgressBridge*>(user_data);
     if (bridge == nullptr || bridge->callback == nullptr || bridge->method == nullptr
@@ -49,6 +55,23 @@ void report_phase(pitchee_analysis_phase_t phase, void* user_data) {
         bridge->callback,
         bridge->method,
         static_cast<jint>(phase)
+    );
+    if (bridge->env->ExceptionCheck()) bridge->env->ExceptionClear();
+}
+
+void report_f0_frame(const pitchee_f0_frame_t* frame, void* user_data) {
+    auto* bridge = static_cast<F0FrameBridge*>(user_data);
+    if (bridge == nullptr || bridge->callback == nullptr || bridge->method == nullptr
+        || frame == nullptr) {
+        return;
+    }
+    bridge->env->CallVoidMethod(
+        bridge->callback,
+        bridge->method,
+        static_cast<jdouble>(frame->timestamp_seconds),
+        static_cast<jfloat>(frame->f0_hz),
+        static_cast<jfloat>(frame->confidence),
+        frame->voiced != 0
     );
     if (bridge->env->ExceptionCheck()) bridge->env->ExceptionClear();
 }
@@ -207,4 +230,103 @@ Java_space_pitchee_core_PitcheeAnalyzer_nativeAnalyzeWithProgress(
     jstring result = env->NewStringUTF(json);
     pitchee_string_free(json);
     return result;
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_space_pitchee_core_PitcheeAnalyzer_nativeRealtimeF0Create(
+    JNIEnv* env,
+    jobject,
+    jlong analyzer_handle,
+    jint context_samples,
+    jint hop_samples
+) {
+    auto* analyzer = reinterpret_cast<pitchee_analyzer_t*>(analyzer_handle);
+    if (analyzer == nullptr) {
+        throw_illegal_state(env, "analyzer is null");
+        return 0;
+    }
+
+    pitchee_realtime_f0_options_t options{};
+    options.context_samples = context_samples;
+    options.hop_samples = hop_samples;
+
+    pitchee_realtime_f0_t* stream = nullptr;
+    char error[1024] = {};
+    const auto status = pitchee_realtime_f0_create(
+        analyzer,
+        &options,
+        &stream,
+        error,
+        sizeof(error)
+    );
+    if (status != PITCHEE_SUCCESS) {
+        throw_illegal_state(env, error);
+        return 0;
+    }
+    return reinterpret_cast<jlong>(stream);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_space_pitchee_core_PitcheeRealtimeF0_nativeProcess(
+    JNIEnv* env,
+    jobject,
+    jlong stream_handle,
+    jfloatArray samples,
+    jobject frame_callback
+) {
+    auto* stream = reinterpret_cast<pitchee_realtime_f0_t*>(stream_handle);
+    if (stream == nullptr || samples == nullptr || frame_callback == nullptr) {
+        throw_illegal_state(env, "realtime F0 stream or PCM buffer is null");
+        return 0;
+    }
+
+    const jsize count = env->GetArrayLength(samples);
+    std::vector<float> pcm(static_cast<size_t>(count));
+    env->GetFloatArrayRegion(samples, 0, count, pcm.data());
+
+    jclass callback_class = env->GetObjectClass(frame_callback);
+    jmethodID frame_method = env->GetMethodID(
+        callback_class,
+        "onFrame",
+        "(DFFZ)V"
+    );
+    env->DeleteLocalRef(callback_class);
+    if (frame_method == nullptr) return 0;
+
+    F0FrameBridge frame_bridge{env, frame_callback, frame_method};
+    size_t frame_count = 0;
+    char error[1024] = {};
+    const auto status = pitchee_realtime_f0_process(
+        stream,
+        pcm.data(),
+        pcm.size(),
+        report_f0_frame,
+        &frame_bridge,
+        &frame_count,
+        error,
+        sizeof(error)
+    );
+    if (status != PITCHEE_SUCCESS) {
+        throw_illegal_state(env, error);
+        return 0;
+    }
+    return static_cast<jlong>(frame_count);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_space_pitchee_core_PitcheeRealtimeF0_nativeReset(
+    JNIEnv*,
+    jobject,
+    jlong stream_handle
+) {
+    pitchee_realtime_f0_reset(reinterpret_cast<pitchee_realtime_f0_t*>(stream_handle));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_space_pitchee_core_PitcheeRealtimeF0_nativeDestroy(
+    JNIEnv*,
+    jobject,
+    jlong stream_handle
+) {
+    pitchee_realtime_f0_destroy(reinterpret_cast<pitchee_realtime_f0_t*>(stream_handle));
 }

@@ -10,6 +10,7 @@ import kotlinx.coroutines.withContext
 import space.pitchee.core.PitcheeAnalyzer
 import space.pitchee.core.PitcheePhase
 import space.pitchee.core.PitcheeProgress
+import space.pitchee.core.PitcheeRealtimeF0
 
 /**
  * App-facing PitcheeCore API. Call [analyze] for an audio Uri or [analyzePcm]
@@ -86,6 +87,16 @@ class PitcheeRepository(
                     "windows=${result.vfp.windowCount}",
             )
             result
+        }
+    }
+
+    suspend fun createRealtimeF0(): PitcheeRealtimeF0 = withContext(Dispatchers.Default) {
+        synchronized(lock) {
+            val readyEngine = analyzer ?: PitcheeAnalyzer.create(
+                modelDirectory = prepareModels().absolutePath,
+                threads = threads,
+            ).also { analyzer = it }
+            readyEngine.createRealtimeF0()
         }
     }
 

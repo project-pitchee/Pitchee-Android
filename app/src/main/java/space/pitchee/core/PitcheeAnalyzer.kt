@@ -89,6 +89,15 @@ fun interface PitcheeProgressCallback {
     )
 }
 
+fun interface PitcheeF0FrameCallback {
+    fun onFrame(
+        timestampSeconds: Double,
+        f0Hz: Float,
+        confidence: Float,
+        voiced: Boolean,
+    )
+}
+
 /**
  * Thin JNI binding to the PitcheeCore C ABI.
  *
@@ -144,6 +153,19 @@ class PitcheeAnalyzer private constructor(private var nativeHandle: Long) : Clos
     }
 
     @Synchronized
+    fun createRealtimeF0(
+        contextSamples: Int = DEFAULT_F0_CONTEXT_SAMPLES,
+        hopSamples: Int = DEFAULT_F0_HOP_SAMPLES,
+    ): PitcheeRealtimeF0 {
+        check(nativeHandle != 0L) { "PitcheeAnalyzer is closed" }
+        require(contextSamples > 0) { "contextSamples must be positive" }
+        require(hopSamples > 0) { "hopSamples must be positive" }
+        return PitcheeRealtimeF0(
+            nativeRealtimeF0Create(nativeHandle, contextSamples, hopSamples),
+        )
+    }
+
+    @Synchronized
     override fun close() {
         if (nativeHandle != 0L) {
             nativeDestroy(nativeHandle)
@@ -169,6 +191,12 @@ class PitcheeAnalyzer private constructor(private var nativeHandle: Long) : Clos
         callback: PitcheeProgressCallback?,
     ): String?
 
+    private external fun nativeRealtimeF0Create(
+        handle: Long,
+        contextSamples: Int,
+        hopSamples: Int,
+    ): Long
+
     companion object {
         init {
             System.loadLibrary("pitchee_core_jni")
@@ -182,5 +210,45 @@ class PitcheeAnalyzer private constructor(private var nativeHandle: Long) : Clos
 
         @JvmStatic
         private external fun nativeCreate(modelDirectory: String, threads: Int): Long
+
+        private const val DEFAULT_F0_CONTEXT_SAMPLES = 5120
+        private const val DEFAULT_F0_HOP_SAMPLES = 256
     }
+}
+
+class PitcheeRealtimeF0 internal constructor(
+    private var nativeHandle: Long,
+) : Closeable {
+    @Synchronized
+    fun process(
+        samples: FloatArray,
+        onFrame: PitcheeF0FrameCallback,
+    ): Long {
+        check(nativeHandle != 0L) { "PitcheeRealtimeF0 is closed" }
+        require(samples.isNotEmpty()) { "PCM buffer must not be empty" }
+        return nativeProcess(nativeHandle, samples, onFrame)
+    }
+
+    @Synchronized
+    fun reset() {
+        if (nativeHandle != 0L) nativeReset(nativeHandle)
+    }
+
+    @Synchronized
+    override fun close() {
+        if (nativeHandle != 0L) {
+            nativeDestroy(nativeHandle)
+            nativeHandle = 0L
+        }
+    }
+
+    private external fun nativeProcess(
+        handle: Long,
+        samples: FloatArray,
+        callback: PitcheeF0FrameCallback,
+    ): Long
+
+    private external fun nativeReset(handle: Long)
+
+    private external fun nativeDestroy(handle: Long)
 }

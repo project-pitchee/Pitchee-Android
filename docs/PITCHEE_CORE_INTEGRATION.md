@@ -3,7 +3,7 @@
 ## 1. 集成基线
 
 - 上游仓库：`https://github.com/project-pitchee/Pitchee-core`
-- 集成提交：`b4d642ae066aba8ff3c63844d68ffa482057f436`
+- 集成提交：`e9bdd3cddeef72768ee3ffeba7b19a997309a625`
 - 上游版本：PitcheeCore `0.1.0`
 - 模型版本：`2026-09`
 - ONNX Runtime：Android `1.24.2`
@@ -12,10 +12,11 @@
 - 最低 Android API：24
 - 当前打包 ABI：`arm64-v8a`、`x86_64`
 
-上游源码和模型被放在 `third_party/Pitchee-core/`。当前集成为 `b4d642a`：
+上游源码和模型被放在 `third_party/Pitchee-core/`。当前集成为 `e9bdd3c`：
 - `399fe8b` 将高 F0、低自然度封顶从 45 降到 30。
 - `2644fe9` 改为直接使用原生 VAD 时间轴窗口，短语音不再补零。
 - `b4d642a` 让自然度窗口与 VFP 窗口一一对应，并更新 ECAPA 模型。
+- `e9bdd3c` 增加复用 SwiftF0 session 的实时 F0 流式接口。
 旧 phase callback 和详细 progress callback 均保持兼容。上游项目没有 Git tag，
 因此提交号是当前唯一可复现的版本标识。
 
@@ -30,6 +31,7 @@ app/src/main/
 │   ├── data/
 │   │   ├── PitcheeRepository.kt       # 对上层公开的 Kotlin 集成接口
 │   │   ├── AudioRecorder.kt            # MediaRecorder 录音
+│   │   ├── RealtimeF0AudioRecorder.kt  # AudioRecord 16 kHz 实时 PCM
 │   │   ├── AudioFileDecoder.kt         # Uri -> Float32 PCM
 │   │   ├── RecordedAudio.kt            # 波形摘要与录音文件
 │   │   ├── FeminineTimeline.kt         # VFP 时间窗 -> 原录音时间轴
@@ -41,6 +43,8 @@ app/src/main/
 │   │   ├── ScoreResult.kt              # 综合分、规则和短板卡片
 │   │   ├── ScoreInsight.kt             # 评分规则解释和瓶颈判断
 │   │   ├── RecordViewModel.kt          # 录音和分析状态
+│   │   ├── PitchViewModel.kt           # 实时 F0 采集与状态
+│   │   ├── RealtimePitchScreen.kt      # 实时 F0 曲线
 │   │   └── theme/PitcheeTheme.kt       # 深粉色 Material 3 配色
 │   └── MainActivity.kt                 # Compose 宿主
 └── java/space/pitchee/core/
@@ -52,7 +56,7 @@ third_party/Pitchee-core/               # 上游 C++、JNI 示例、模型和许
 MVVM 对应关系：
 
 - **Model**：`PitcheeRepository`、`AudioRecorder`、`AudioFileDecoder`、`PitcheeResult`
-- **ViewModel**：`RecordViewModel`
+- **ViewModel**：`RecordViewModel`、`PitchViewModel`
 - **View**：`PitcheeApp.kt`、`MainActivity.kt` 和三个 Compose 目的地
 
 没有引入 Hilt/Koin 等 DI 框架。当前只有一个 Repository 和一个 ViewModel，
@@ -96,6 +100,16 @@ repository.close()
 
 `analyze` 在 IO 线程解码音频，`analyzePcm` 在 CPU 线程执行模型推理。
 Repository 会串行化 native 调用，因为同一个 `pitchee_analyzer_t` 不能并发使用。
+
+实时 F0 流复用 Repository 中已加载的 analyzer：
+
+```kotlin
+val stream = repository.createRealtimeF0()
+stream.process(floatSamples16kMono) { timestamp, f0Hz, confidence, voiced ->
+    // timestamp 单位为秒；voiced=false 时 f0Hz 不应展示
+}
+stream.close()
+```
 
 返回类型为 `PitcheeResult`，包含：
 
@@ -258,11 +272,10 @@ schema 2 中 `f0.windows`、`vfp.windows`、`naturalness.windows` 都直接提�
 时间桶的局部综合指数；它由当前覆盖该时间桶的 VFP、自然度和 F0 窗口计算，并
 应用同一套连续分和封顶规则，但整段聚合自然度可能与局部值不同。
 
-界面采用 Compose Material 3，品牌主题固定为深粉色，不启用动态色，避免系统
+界面采用 Compose Material 3，品牌主题固定为暖橙色，不启用动态色，避免系统
 壁纸覆盖品牌色。声音分析页在结果生成前只保留标题、圆键、状态文案和底部
 PitcheeCore 标识；录音键在空闲、录音和分析状态之间使用尺寸、颜色、缩放和
-内容切换动画。实时基频页目前只提供占位状态；后续接入时应复用同一权限流程，
-并把实时计算与批量模型分析分开，避免长时间占用推理线程。
+内容切换动画。
 
 ### 4.13 综合分规则解释
 
@@ -291,6 +304,25 @@ Android 版本目前没有启用 NNAPI 等 execution provider，仍使用 CPU。
 需要硬件加速时，需要先验证 ONNX Runtime Android 的 NNAPI/其他 provider
 与所有模型算子兼容性。
 
+### 4.15 Android 实时 F0 流集成
+
+Core `e9bdd3c` 新增 `pitchee_realtime_f0_create/process/reset/destroy`。Android
+侧在 JNI 中增加对应桥接，并通过 `PitcheeRealtimeF0` 暴露同步回调。
+
+Android 的 `MediaRecorder` 不提供实时 PCM，因此实时页使用单独的
+`RealtimeF0AudioRecorder`：
+
+- `AudioRecord`
+- 16 kHz
+- 单声道
+- `ENCODING_PCM_FLOAT`
+- `READ_BLOCKING`
+
+`PitchViewModel` 在后台持续读取 512 个样本的 PCM，交给 Core 的实时流；Core
+默认使用 5120 样本上下文和 256 样本 hop。界面只保留最近 480 个 F0 点，绘制
+约 6 秒滚动曲线。离开实时页时先取消采集任务，再关闭实时流，避免 analyzer
+生命周期结束前仍持有 native session。
+
 ## 5. 已验证内容
 
 当前环境已执行并通过：
@@ -317,6 +349,8 @@ Android 版本目前没有启用 NNAPI 等 execution provider，仍使用 CPU。
   等细粒度进度回调
 - 设备测试确认能收到 `DETECTING_SPEECH`、VFP 特征提取、自然度评分和
   `COMPLETED` 等细粒度进度
+- 设备测试使用 16 kHz 单声道 180 Hz 测试音验证实时 F0 流，确认能够返回
+  voiced 帧
 - 新版原生时间轴窗口和设备测试中，7.53 秒语音产生 45 个 VFP/自然度窗口，
   完整成功路径约 8.5 秒，综合分约 `45.98`
 - 在 Android API 32 arm64 模拟器上手动验证了麦克风权限、录音、停止分析、

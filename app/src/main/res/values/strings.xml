@@ -7,11 +7,12 @@
     <string name="nav_score_test">规则</string>
 
     <string name="pitch_title">实时基频</string>
-    <string name="pitch_subtitle">观察说话过程中的音高变化</string>
-    <string name="pitch_coming_soon">即将开放</string>
-    <string name="pitch_coming_soon_body">实时检测将在后续版本接入。届时先授予麦克风权限，再开始练习即可看到实时基频曲线。</string>
-    <string name="pitch_permission_title">需要麦克风权限</string>
-    <string name="pitch_permission_body">实时检测只会在你主动开启后使用麦克风，音频在本机处理，不会上传。</string>
+    <string name="pitch_subtitle">对着麦克风持续发声，实时查看基频变化</string>
+    <string name="pitch_no_voice">等待稳定音高</string>
+    <string name="pitch_preparing">正在准备实时模型</string>
+    <string name="pitch_instruction">保持自然音量，连续发声效果更稳定</string>
+    <string name="pitch_start_monitoring">开始实时监测</string>
+    <string name="pitch_stop_monitoring">停止监测</string>
     <string name="analysis_inference_title">推理你的声音</string>
     <string name="analysis_powered_by">Power by PitcheeCore C++</string>
     <string name="click_to_record">点击开始录制</string>
