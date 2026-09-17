@@ -3,6 +3,7 @@ package io.rovly.pitchee.ui
 import android.media.MediaPlayer
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
@@ -41,6 +42,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -56,7 +58,6 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
-import kotlinx.coroutines.delay
 
 private val ScoreColors = listOf(
     Color(0xFFD55362),
@@ -156,8 +157,8 @@ internal fun RecordedAudioTimeline(
 
     LaunchedEffect(isPlaying, isPrepared) {
         while (isPlaying && isPrepared) {
+            withFrameNanos { }
             positionMs = player.currentPosition.toLong()
-            delay(50)
         }
     }
 
@@ -303,7 +304,7 @@ internal fun RecordedAudioTimeline(
                         accent = playerAccent,
                         thresholdColor = playerContent.copy(alpha = 0.34f),
                         thresholdLabelColor = playerContent.copy(alpha = 0.38f),
-                        labelBackground = playerBackground.copy(alpha = 0.94f),
+                        labelBackground = playerBackground,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -335,7 +336,21 @@ private fun F0Track(
 ) {
     val pink = Color(0xFFFFB6C1)
     val blue = Color(0xFF6495ED)
-    val currentF0 = f0At(positionSeconds, f0Windows)
+    val targetF0 = f0At(positionSeconds, f0Windows)
+    val animatedF0 = remember { Animatable(targetF0 ?: 0f) }
+
+    LaunchedEffect(targetF0) {
+        if (targetF0 != null) {
+            animatedF0.animateTo(
+                targetValue = targetF0,
+                animationSpec = spring(
+                    dampingRatio = 0.82f,
+                    stiffness = 260f,
+                    visibilityThreshold = 0.05f,
+                ),
+            )
+        }
+    }
 
     BoxWithConstraints(modifier = modifier) {
         val thresholdHz = 165f
@@ -454,26 +469,33 @@ private fun F0Track(
             color = thresholdLabelColor,
         )
 
-        currentF0?.let { hz ->
+        if (targetF0 != null) {
+            val hz = animatedF0.value
             val color = if (hz > thresholdHz) pink else blue
             val currentY = maxHeight * (1f - hz.coerceIn(0f, maximumHz) / maximumHz)
-            val labelY = (currentY + 8.dp).coerceIn(0.dp, maxHeight - 24.dp)
+            val labelY = (currentY + 18.dp).coerceIn(0.dp, maxHeight - 34.dp)
             Surface(
                 modifier = Modifier.offset(
-                    x = maxWidth / 2 + 8.dp,
+                    x = maxWidth / 2 + 12.dp,
                     y = labelY,
                 ),
-                shape = RoundedCornerShape(6.dp),
+                shape = RoundedCornerShape(11.dp),
                 color = labelBackground,
-                contentColor = color,
-                border = BorderStroke(1.dp, color),
             ) {
-                Text(
-                    text = "%.0f".format(hz),
-                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                )
+                Surface(
+                    modifier = Modifier.padding(4.dp),
+                    shape = RoundedCornerShape(7.dp),
+                    color = labelBackground,
+                    contentColor = color,
+                    border = BorderStroke(1.5.dp, color),
+                ) {
+                    Text(
+                        text = "%.0f".format(hz),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             }
         }
     }

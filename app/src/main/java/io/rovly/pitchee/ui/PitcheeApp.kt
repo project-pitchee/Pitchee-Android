@@ -389,7 +389,7 @@ private fun demoRuleResult(): PitcheeResult = PitcheeResult.fromJson(
         }]
       },
       "f0": {
-        "window_seconds": 0.1,
+        "window_seconds": 0.05,
         "mean_hz": 158.0,
         "standard_deviation_hz": 12.0,
         "voiced_frame_count": 600,

@@ -177,7 +177,7 @@ The result is deliberately data-only:
     "segments": []
   },
   "f0": {
-    "window_seconds": 0.1,
+    "window_seconds": 0.05,
     "mean_hz": null,
     "standard_deviation_hz": null,
     "voiced_frame_count": 0,
@@ -228,3 +228,16 @@ pitchee_composite_score(
 ```
 
 This function has no ONNX Runtime dependency and can be reused independently.
+
+For callers that only need the final number, use the three-metric convenience
+function:
+
+```c
+double final_score = pitchee_composite_score_value(
+    vfp_standard_score,
+    naturalness_score,
+    f0_hz
+);
+```
+
+Pass `NAN` or a non-positive `f0_hz` when F0 is unavailable.

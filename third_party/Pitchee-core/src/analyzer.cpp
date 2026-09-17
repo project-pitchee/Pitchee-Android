@@ -41,7 +41,7 @@ struct pitchee_realtime_f0_t {
 
 namespace {
 
-constexpr double kF0WindowSeconds = 0.1;
+constexpr double kF0WindowSeconds = 0.05;
 
 struct ProgressReporter {
     pitchee_phase_callback_t phase_callback = nullptr;
@@ -925,6 +925,20 @@ void pitchee_realtime_f0_reset(pitchee_realtime_f0_t* stream) {
 
 void pitchee_realtime_f0_destroy(pitchee_realtime_f0_t* stream) {
     delete stream;
+}
+
+double pitchee_composite_score_value(
+    double vfp_standard_score,
+    double naturalness_score,
+    double f0_hz
+) {
+    const bool has_f0 = std::isfinite(f0_hz) && f0_hz > 0.0;
+    return pitchee::calculate_composite_score(
+        vfp_standard_score,
+        naturalness_score,
+        has_f0,
+        f0_hz
+    ).final_score;
 }
 
 pitchee_status_t pitchee_composite_score(

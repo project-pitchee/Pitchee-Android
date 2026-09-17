@@ -3,7 +3,7 @@
 ## 1. 集成基线
 
 - 上游仓库：`https://github.com/project-pitchee/Pitchee-core`
-- 集成提交：`e9bdd3cddeef72768ee3ffeba7b19a997309a625`
+- 集成提交：`e3b77aa776ffb57f4414161fd10ebfb487535470`
 - 上游版本：PitcheeCore `0.1.0`
 - 模型版本：`2026-09`
 - ONNX Runtime：Android `1.24.2`
@@ -12,11 +12,12 @@
 - 最低 Android API：24
 - 当前打包 ABI：`arm64-v8a`、`x86_64`
 
-上游源码和模型被放在 `third_party/Pitchee-core/`。当前集成为 `e9bdd3c`：
+上游源码和模型被放在 `third_party/Pitchee-core/`。当前集成为 `e3b77aa`：
 - `399fe8b` 将高 F0、低自然度封顶从 45 降到 30。
 - `2644fe9` 改为直接使用原生 VAD 时间轴窗口，短语音不再补零。
 - `b4d642a` 让自然度窗口与 VFP 窗口一一对应，并更新 ECAPA 模型。
 - `e9bdd3c` 增加复用 SwiftF0 session 的实时 F0 流式接口。
+- `e3b77aa` 将 F0 时间轴窗口从 `0.1` 秒加密到 `0.05` 秒，并增加三指标便捷评分函数。
 旧 phase callback 和详细 progress callback 均保持兼容。上游项目没有 Git tag，
 因此提交号是当前唯一可复现的版本标识。
 
@@ -115,7 +116,7 @@ stream.close()
 
 - `audio`：源采样率、声道数、输入和实际分析时长
 - `vad`：语音区间
-- `f0`：平均 F0、标准差、0.1 秒时间窗
+- `f0`：平均 F0、标准差、0.05 秒时间窗
 - `vfp`：VFP 标准分和源音频时间轴窗口
 - `naturalness`：整段自然度分和局部自然度窗口
 - `composite`：规则处理前后的综合分

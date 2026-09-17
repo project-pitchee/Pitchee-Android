@@ -327,13 +327,13 @@ SwiftF0 每帧时间步长是 256 samples。Core 使用重叠上下文维持低�
     ]
   },
   "f0": {
-    "window_seconds": 0.1,
+    "window_seconds": 0.05,
     "mean_hz": 169.1802,
     "standard_deviation_hz": 10.8073,
     "voiced_frame_count": 88,
     "voiced_window_count": 17,
     "windows": [
-      {"start_seconds": 0.0, "end_seconds": 0.1, "f0_hz": null},
+      {"start_seconds": 0.0, "end_seconds": 0.05, "f0_hz": null},
       {"start_seconds": 0.7, "end_seconds": 0.8, "f0_hz": 187.3043}
     ]
   },
@@ -417,11 +417,11 @@ end_seconds - start_seconds
 
 | 字段 | 单位 | 含义 |
 | --- | --- | --- |
-| `window_seconds` | 秒 | F0 时间轴窗口长度，固定为 `0.1`。 |
+| `window_seconds` | 秒 | F0 时间轴窗口长度，固定为 `0.05`。 |
 | `mean_hz` | Hz | 有效浊音帧的平均 F0。没有有效帧时为 `null`。 |
 | `standard_deviation_hz` | Hz | 浊音 F0 的总体标准差，分母为帧数 `N`。 |
 | `voiced_frame_count` | 数量 | 置信度大于 `0.9` 且 F0 在 `75–600 Hz` 的帧数。 |
-| `voiced_window_count` | 数量 | 至少包含一个有效浊音帧的 0.1 秒窗口数。 |
+| `voiced_window_count` | 数量 | 至少包含一个有效浊音帧的 0.05 秒窗口数。 |
 | `windows` | 数组 | 原始分析音频时间轴上的 F0 时间序列。 |
 
 #### `f0.windows[]`
@@ -488,6 +488,18 @@ Core 不对语音段做拼接。长语音段按 1.515 秒窗口和 0.1 秒步长
 | `boosted` | 布尔值 | 及格提升是否实际提高了分数。 |
 
 ## 综合分规则
+
+如果只需要最终分数，Core 提供三指标便捷接口：
+
+```c
+double final_score = pitchee_composite_score_value(
+    vfp_standard_score,
+    naturalness_score,
+    f0_hz
+);
+```
+
+没有有效 F0 时，`f0_hz` 传 `NAN` 或 `<= 0`。
 
 令：
 
