@@ -10,6 +10,8 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.layout.Arrangement
@@ -70,11 +72,13 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun ScoreResultContent(
     result: PitcheeResult,
     previousScore: Double? = null,
+    previousMetrics: PreviousMetrics? = null,
     animateScore: Boolean = true,
     onOpenRules: () -> Unit = {},
     audioPlayer: @Composable () -> Unit = {},
@@ -97,7 +101,12 @@ internal fun ScoreResultContent(
         PassCard(onOpenRules)
         Spacer(Modifier.height(12.dp))
     }
-    MetricsCard(result, insight)
+    MetricsCard(
+        result = result,
+        insight = insight,
+        previousMetrics = previousMetrics,
+        animate = animateScore,
+    )
 }
 
 @Composable
@@ -368,6 +377,7 @@ private fun scoreFontCap(score: Double): TextUnit {
 internal fun ScoreRulesContent(
     result: PitcheeResult,
     previousScore: Double?,
+    previousMetrics: PreviousMetrics?,
 ) {
     val insight = remember(result) { ScoreInsight.from(result) }
     val currentRule = result.composite.rule
@@ -404,7 +414,7 @@ internal fun ScoreRulesContent(
             fontWeight = FontWeight.Bold,
         )
         Spacer(Modifier.height(10.dp))
-        scoreIndicators(result).forEach { indicator ->
+        scoreIndicators(result, previousMetrics).forEach { indicator ->
             IndicatorRow(indicator)
             Spacer(Modifier.height(12.dp))
         }
@@ -594,11 +604,32 @@ private fun IndicatorRow(indicator: ScoreIndicator) {
                 fontWeight = FontWeight.Bold,
             )
         }
-        Text(
-            text = indicator.tier,
-            style = MaterialTheme.typography.labelMedium,
-            color = contentColor,
-        )
+        val delta = indicator.comparison?.let { it.current - it.previous }
+        val comparisonText = when {
+            delta == null -> "较上次 —"
+            delta > 0.05 -> "较上次 ↑ ${formatComparison(abs(delta), indicator.comparison.unit)}"
+            delta < -0.05 -> "较上次 ↓ ${formatComparison(abs(delta), indicator.comparison.unit)}"
+            else -> "较上次 → ${formatComparison(0.0, indicator.comparison.unit)}"
+        }
+        val comparisonColor = when {
+            delta == null -> MaterialTheme.colorScheme.onSurfaceVariant
+            delta > 0.05 -> Color(0xFF257A45)
+            delta < -0.05 -> MaterialTheme.colorScheme.error
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                text = indicator.tier,
+                style = MaterialTheme.typography.labelMedium,
+                color = contentColor,
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                text = comparisonText,
+                style = MaterialTheme.typography.labelSmall,
+                color = comparisonColor,
+            )
+        }
     }
 }
 
@@ -607,9 +638,22 @@ private data class ScoreIndicator(
     val value: String,
     val passed: Boolean,
     val tier: String,
+    val comparison: ScoreComparison?,
 )
 
-private fun scoreIndicators(result: PitcheeResult): List<ScoreIndicator> {
+private data class ScoreComparison(
+    val current: Double,
+    val previous: Double,
+    val unit: String = "",
+)
+
+private fun formatComparison(value: Double, unit: String): String =
+    if (unit == " Hz") "%.0f%s".format(value, unit) else "%.1f%s".format(value, unit)
+
+private fun scoreIndicators(
+    result: PitcheeResult,
+    previousMetrics: PreviousMetrics?,
+): List<ScoreIndicator> {
     val standard = result.vfp.standardScore
     val naturalness = result.naturalness.score
     val f0 = result.f0.meanHz
@@ -634,13 +678,34 @@ private fun scoreIndicators(result: PitcheeResult): List<ScoreIndicator> {
     val f0Score = f0?.let { ((it - 110.0) / 90.0 * 100.0).coerceIn(0.0, 100.0) } ?: 0.0
     val f0Tier = scoreTier(f0Score, !f0Limited)
     return listOf(
-        ScoreIndicator("标准音色", "%.1f".format(standard), !standardLimited, standardTier),
-        ScoreIndicator("自然度", "%.1f".format(naturalness), !naturalnessLimited, naturalnessTier),
+        ScoreIndicator(
+            label = "标准音色",
+            value = "%.1f".format(standard),
+            passed = !standardLimited,
+            tier = standardTier,
+            comparison = previousMetrics?.let {
+                ScoreComparison(standard, it.standardScore)
+            },
+        ),
+        ScoreIndicator(
+            label = "自然度",
+            value = "%.1f".format(naturalness),
+            passed = !naturalnessLimited,
+            tier = naturalnessTier,
+            comparison = previousMetrics?.let {
+                ScoreComparison(naturalness, it.naturalnessScore)
+            },
+        ),
         ScoreIndicator(
             label = "平均 F0",
             value = f0?.let { "%.0f Hz".format(it) } ?: "未检测到",
             passed = !f0Limited,
             tier = f0Tier,
+            comparison = if (f0 != null && previousMetrics?.meanF0Hz != null) {
+                ScoreComparison(f0, previousMetrics.meanF0Hz, " Hz")
+            } else {
+                null
+            },
         ),
     ).sortedBy { it.passed }
 }
@@ -915,77 +980,156 @@ private fun BottleneckCard(
 }
 
 @Composable
-private fun MetricsCard(result: PitcheeResult, insight: ScoreInsight) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
+private fun MetricsCard(
+    result: PitcheeResult,
+    insight: ScoreInsight,
+    previousMetrics: PreviousMetrics?,
+    animate: Boolean,
+) {
     val cardColor = MaterialTheme.colorScheme.tertiaryContainer
     val toggleColor = MaterialTheme.colorScheme.tertiary
     val toggleContentColor = MaterialTheme.colorScheme.onTertiary
-    val standard = result.vfp.standardScore
-    val naturalness = result.naturalness.score
-    val f0 = result.f0.meanHz
-    val f0Score = f0?.let { min(100.0, max(0.0, (it - 110.0) / 90.0 * 100.0)) }
+    val currentStandard = result.vfp.standardScore
+    val currentNaturalness = result.naturalness.score
+    val currentF0 = result.f0.meanHz
+    val previousStandard = previousMetrics?.standardScore ?: 0.0
+    val previousNaturalness = previousMetrics?.naturalnessScore ?: 0.0
+    val previousF0 = previousMetrics?.meanF0Hz ?: 0.0
+    val standardAnimation = remember { Animatable(previousStandard.toFloat()) }
+    val naturalnessAnimation = remember { Animatable(previousNaturalness.toFloat()) }
+    val f0Animation = remember { Animatable(previousF0.toFloat()) }
+    val compareInteraction = remember { MutableInteractionSource() }
+    val comparing by compareInteraction.collectIsPressedAsState()
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = cardColor,
-        ),
-    ) {
-        Column {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "显示音色/F0/VFP指标",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                ResultActionButton(
-                    text = if (expanded) "收起" else "展开",
-                    onClick = { expanded = !expanded },
-                    containerColor = toggleColor,
-                    contentColor = toggleContentColor,
-                )
-            }
-            AnimatedVisibility(
-                visible = expanded,
-                enter = expandVertically(
-                    animationSpec = spring(dampingRatio = 0.82f, stiffness = 280f),
-                ),
-                exit = shrinkVertically(
-                    animationSpec = spring(dampingRatio = 0.9f, stiffness = 320f),
-                ),
-            ) {
+    LaunchedEffect(result, previousMetrics, animate) {
+        standardAnimation.stop()
+        naturalnessAnimation.stop()
+        f0Animation.stop()
+        standardAnimation.snapTo(previousStandard.toFloat())
+        naturalnessAnimation.snapTo(previousNaturalness.toFloat())
+        f0Animation.snapTo(previousF0.toFloat())
+        if (!animate) {
+            standardAnimation.snapTo(currentStandard.toFloat())
+            naturalnessAnimation.snapTo(currentNaturalness.toFloat())
+            f0Animation.snapTo((currentF0 ?: 0.0).toFloat())
+            return@LaunchedEffect
+        }
+
+        delay(500)
+        val metricSpring = spring(
+            dampingRatio = 0.62f,
+            stiffness = 180f,
+            visibilityThreshold = 0.01f,
+        )
+        launch {
+            standardAnimation.animateTo(
+                targetValue = currentStandard.toFloat(),
+                animationSpec = metricSpring,
+            )
+        }
+        launch {
+            naturalnessAnimation.animateTo(
+                targetValue = currentNaturalness.toFloat(),
+                animationSpec = metricSpring,
+            )
+        }
+        launch {
+            f0Animation.animateTo(
+                targetValue = (currentF0 ?: 0.0).toFloat(),
+                animationSpec = metricSpring,
+            )
+        }
+    }
+
+    val standardProgress = if (comparing) {
+        (previousStandard / 100.0).toFloat()
+    } else {
+        (standardAnimation.value / 100f).coerceIn(0f, 1f)
+    }
+    val naturalnessProgress = if (comparing) {
+        (previousNaturalness / 100.0).toFloat()
+    } else {
+        (naturalnessAnimation.value / 100f).coerceIn(0f, 1f)
+    }
+    val f0ProgressValue = if (comparing) previousF0 else f0Animation.value.toDouble()
+    val f0Progress = (f0ProgressScore(f0ProgressValue) / 100.0).toFloat()
+    val standardForColor = if (comparing) previousStandard else standardAnimation.value.toDouble()
+    val naturalnessForColor =
+        if (comparing) previousNaturalness else naturalnessAnimation.value.toDouble()
+    val f0ForColor = f0ProgressScore(f0ProgressValue)
+
+    Column {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = cardColor,
+            ),
+        ) {
+            Column {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "显示音色/F0/VFP指标",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Button(
+                        onClick = {},
+                        interactionSource = compareInteraction,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = toggleColor,
+                            contentColor = toggleContentColor,
+                        ),
+                    ) {
+                        Text(
+                            text = "对比上次",
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
                 Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 20.dp)) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Spacer(Modifier.height(14.dp))
                     MetricRow(
                         label = "标准音色",
-                        value = "%.1f".format(standard),
-                        progress = (standard / 100.0).toFloat(),
+                        value = if (comparing) {
+                            "%.1f".format(previousStandard)
+                        } else {
+                            "%.1f".format(currentStandard)
+                        },
+                        progress = standardProgress,
                         highlighted = insight.bottleneckTitle.contains("音色"),
-                        score = standard,
+                        score = standardForColor,
                     )
                     Spacer(Modifier.height(14.dp))
                     MetricRow(
                         label = "自然度",
-                        value = "%.1f".format(naturalness),
-                        progress = (naturalness / 100.0).toFloat(),
+                        value = if (comparing) {
+                            "%.1f".format(previousNaturalness)
+                        } else {
+                            "%.1f".format(currentNaturalness)
+                        },
+                        progress = naturalnessProgress,
                         highlighted = insight.bottleneckTitle.contains("自然度"),
-                        score = naturalness,
+                        score = naturalnessForColor,
                     )
                     Spacer(Modifier.height(14.dp))
                     MetricRow(
                         label = "平均 F0",
-                        value = f0?.let { "%.0f Hz".format(it) } ?: "未检测到",
-                        progress = f0Score?.div(100.0)?.toFloat() ?: 0f,
+                        value = if (comparing) {
+                            previousMetrics?.meanF0Hz?.let { "%.0f Hz".format(it) } ?: "未检测到"
+                        } else {
+                            currentF0?.let { "%.0f Hz".format(it) } ?: "未检测到"
+                        },
+                        progress = f0Progress,
                         highlighted = insight.bottleneckTitle.contains("F0") ||
                             insight.bottleneckTitle.contains("基频"),
-                        score = f0Score ?: 0.0,
+                        score = f0ForColor,
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
@@ -996,8 +1140,20 @@ private fun MetricsCard(result: PitcheeResult, insight: ScoreInsight) {
                 }
             }
         }
+        if (previousMetrics == null) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "没有找到上次的指标。",
+                modifier = Modifier.padding(start = 8.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
     }
 }
+
+private fun f0ProgressScore(f0Hz: Double): Double =
+    min(100.0, max(0.0, (f0Hz - 110.0) / 90.0 * 100.0))
 
 @Composable
 private fun MetricRow(

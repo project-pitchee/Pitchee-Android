@@ -27,6 +27,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+data class PreviousMetrics(
+    val standardScore: Double,
+    val naturalnessScore: Double,
+    val meanF0Hz: Double?,
+)
+
 sealed interface RecordUiState {
     data object Ready : RecordUiState
 
@@ -45,6 +51,7 @@ sealed interface RecordUiState {
         val result: PitcheeResult,
         val audio: RecordedAudio,
         val previousScore: Double?,
+        val previousMetrics: PreviousMetrics?,
         val scoreAnimationToken: Long,
     ) : RecordUiState
 
@@ -65,6 +72,7 @@ class RecordViewModel(
         .getFloat(KEY_LAST_RESULT_SCORE, NO_PREVIOUS_SCORE)
         .takeUnless { it == NO_PREVIOUS_SCORE }
         ?.toDouble()
+    private var lastResultMetrics: PreviousMetrics? = scoreHistory.readPreviousMetrics()
     private var resultSequence = 0L
     private var consumedScoreAnimationToken: Long? = null
 
@@ -157,9 +165,25 @@ class RecordViewModel(
                     )
                 } else {
                     val previousScore = lastResultScore
+                    val previousMetrics = lastResultMetrics
+                    val currentMetrics = PreviousMetrics(
+                        standardScore = result.vfp.standardScore,
+                        naturalnessScore = result.naturalness.score,
+                        meanF0Hz = result.f0.meanHz,
+                    )
                     lastResultScore = result.composite.finalScore
+                    lastResultMetrics = currentMetrics
                     scoreHistory.edit()
                         .putFloat(KEY_LAST_RESULT_SCORE, result.composite.finalScore.toFloat())
+                        .putFloat(KEY_LAST_STANDARD_SCORE, currentMetrics.standardScore.toFloat())
+                        .putFloat(
+                            KEY_LAST_NATURALNESS_SCORE,
+                            currentMetrics.naturalnessScore.toFloat(),
+                        )
+                        .putFloat(
+                            KEY_LAST_MEAN_F0_HZ,
+                            currentMetrics.meanF0Hz?.toFloat() ?: NO_PREVIOUS_F0,
+                        )
                         .apply()
                     mutableState.value = RecordUiState.Analyzing(
                         phase = PitcheePhase.COMPLETED,
@@ -176,6 +200,7 @@ class RecordViewModel(
                         result = result,
                         audio = recordedAudio,
                         previousScore = previousScore,
+                        previousMetrics = previousMetrics,
                         scoreAnimationToken = ++resultSequence,
                     )
                 }
@@ -224,6 +249,24 @@ class RecordViewModel(
         else -> PitcheePhase.ANALYZING
     }
 
+    private fun SharedPreferences.readPreviousMetrics(): PreviousMetrics? {
+        if (!contains(KEY_LAST_STANDARD_SCORE) || !contains(KEY_LAST_NATURALNESS_SCORE)) {
+            return null
+        }
+        val meanF0Hz = if (contains(KEY_LAST_MEAN_F0_HZ)) {
+            getFloat(KEY_LAST_MEAN_F0_HZ, NO_PREVIOUS_F0)
+                .takeUnless { it == NO_PREVIOUS_F0 }
+                ?.toDouble()
+        } else {
+            null
+        }
+        return PreviousMetrics(
+            standardScore = getFloat(KEY_LAST_STANDARD_SCORE, 0f).toDouble(),
+            naturalnessScore = getFloat(KEY_LAST_NATURALNESS_SCORE, 0f).toDouble(),
+            meanF0Hz = meanF0Hz,
+        )
+    }
+
     companion object {
         const val MAX_RECORDING_SECONDS = 20f
         const val MINIMUM_SPEECH_SECONDS = 5.0
@@ -231,7 +274,11 @@ class RecordViewModel(
         private const val COMPLETION_HOLD_MS = 900L
         private const val SCORE_HISTORY_NAME = "score_history"
         private const val KEY_LAST_RESULT_SCORE = "last_result_score"
+        private const val KEY_LAST_STANDARD_SCORE = "last_standard_score"
+        private const val KEY_LAST_NATURALNESS_SCORE = "last_naturalness_score"
+        private const val KEY_LAST_MEAN_F0_HZ = "last_mean_f0_hz"
         private const val NO_PREVIOUS_SCORE = -1f
+        private const val NO_PREVIOUS_F0 = -1f
 
         fun factory(context: Context): ViewModelProvider.Factory = viewModelFactory {
             initializer {

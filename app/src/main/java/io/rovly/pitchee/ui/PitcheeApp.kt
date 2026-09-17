@@ -132,6 +132,11 @@ fun PitcheeApp() {
                 PitcheeDestination.SCORE_RULES -> ScoreRulesPage(
                     result = remember { demoRuleResult() },
                     previousScore = 52.0,
+                    previousMetrics = PreviousMetrics(
+                        standardScore = 70.0,
+                        naturalnessScore = 75.0,
+                        meanF0Hz = 150.0,
+                    ),
                     onBack = null,
                 )
             }
@@ -214,6 +219,7 @@ private fun RecordAnalysisScreen() {
                         ScoreRulesPage(
                             result = current.result,
                             previousScore = current.previousScore,
+                            previousMetrics = current.previousMetrics,
                             onBack = { showingRules = false },
                         )
                     } else {
@@ -228,6 +234,7 @@ private fun RecordAnalysisScreen() {
                                 ScoreResultContent(
                                     result = current.result,
                                     previousScore = current.previousScore,
+                                    previousMetrics = current.previousMetrics,
                                     animateScore = animateScore,
                                     onOpenRules = { showingRules = true },
                                 ) {
@@ -311,6 +318,7 @@ private fun RecordAnalysisScreen() {
 private fun ScoreRulesPage(
     result: PitcheeResult,
     previousScore: Double?,
+    previousMetrics: PreviousMetrics?,
     onBack: (() -> Unit)?,
 ) {
     if (onBack != null) {
@@ -341,6 +349,7 @@ private fun ScoreRulesPage(
             ScoreRulesContent(
                 result = result,
                 previousScore = previousScore,
+                previousMetrics = previousMetrics,
             )
         }
     }
