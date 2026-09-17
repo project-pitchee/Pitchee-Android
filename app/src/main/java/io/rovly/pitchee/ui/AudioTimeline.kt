@@ -5,15 +5,19 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -42,10 +47,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.rovly.pitchee.R
 import io.rovly.pitchee.data.F0Window
 import io.rovly.pitchee.data.RecordedAudio
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -272,20 +279,34 @@ internal fun RecordedAudioTimeline(
                     )
                 }
                 Spacer(Modifier.height(12.dp))
-                F0Track(
-                    f0Windows = f0Windows,
-                    positionSeconds = positionMs / 1000.0,
-                    windowSeconds = windowSeconds,
-                    thresholdColor = playerContent.copy(alpha = 0.34f),
-                )
-                Spacer(Modifier.height(8.dp))
-                BasicWaveform(
-                    audio = audio,
-                    positionSeconds = positionMs / 1000.0,
-                    windowSeconds = windowSeconds,
-                    accent = playerAccent,
-                    contentColor = playerContent,
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(248.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth(),
+                    ) {
+                        BasicWaveform(
+                            audio = audio,
+                            positionSeconds = positionMs / 1000.0,
+                            windowSeconds = windowSeconds,
+                            contentColor = playerContent,
+                        )
+                    }
+                    F0Track(
+                        f0Windows = f0Windows,
+                        positionSeconds = positionMs / 1000.0,
+                        windowSeconds = windowSeconds,
+                        accent = playerAccent,
+                        thresholdColor = playerContent.copy(alpha = 0.34f),
+                        thresholdLabelColor = playerContent.copy(alpha = 0.38f),
+                        labelBackground = playerBackground.copy(alpha = 0.94f),
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
         } else {
             Box(
@@ -306,118 +327,174 @@ private fun F0Track(
     f0Windows: List<F0Window>,
     positionSeconds: Double,
     windowSeconds: Double,
+    accent: Color,
     thresholdColor: Color,
+    thresholdLabelColor: Color,
+    labelBackground: Color,
+    modifier: Modifier = Modifier,
 ) {
     val pink = Color(0xFFFFB6C1)
     val blue = Color(0xFF6495ED)
+    val currentF0 = f0At(positionSeconds, f0Windows)
 
-    Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(112.dp),
-    ) {
+    BoxWithConstraints(modifier = modifier) {
         val thresholdHz = 165f
-        val minimumHz = 80f
         val maximumHz = 300f
-        val thresholdY = size.height -
-            (thresholdHz - minimumHz) / (maximumHz - minimumHz) * size.height
+        val thresholdY = maxHeight * (1f - thresholdHz / maximumHz)
         val viewportStart = positionSeconds - windowSeconds / 2.0
         val maximumGapSeconds = 0.35
 
-        drawLine(
-            color = thresholdColor,
-            start = Offset(0f, thresholdY),
-            end = Offset(size.width, thresholdY),
-            strokeWidth = 1.5.dp.toPx(),
-        )
+        Canvas(Modifier.fillMaxSize()) {
+            drawLine(
+                color = thresholdColor,
+                start = Offset(0f, thresholdY.toPx()),
+                end = Offset(size.width, thresholdY.toPx()),
+                strokeWidth = 1.5.dp.toPx(),
+            )
 
-        fun xFor(seconds: Double): Float =
-            ((seconds - viewportStart) / windowSeconds).toFloat() * size.width
+            fun xFor(seconds: Double): Float =
+                ((seconds - viewportStart) / windowSeconds).toFloat() * size.width
 
-        fun yFor(hz: Float): Float =
-            size.height - (hz.coerceIn(minimumHz, maximumHz) - minimumHz) /
-                (maximumHz - minimumHz) * size.height
+            fun yFor(hz: Float): Float =
+                size.height - hz.coerceIn(0f, maximumHz) / maximumHz * size.height
 
-        val points = f0Windows.mapNotNull { window ->
-            val hz = window.f0Hz?.toFloat() ?: return@mapNotNull null
-            val seconds = (window.startSeconds + window.endSeconds) / 2.0
-            if (seconds < viewportStart - maximumGapSeconds ||
-                seconds > viewportStart + windowSeconds + maximumGapSeconds
-            ) {
-                return@mapNotNull null
+            val points = f0Windows.mapNotNull { window ->
+                val hz = window.f0Hz?.toFloat() ?: return@mapNotNull null
+                val seconds = (window.startSeconds + window.endSeconds) / 2.0
+                if (seconds < viewportStart - maximumGapSeconds ||
+                    seconds > viewportStart + windowSeconds + maximumGapSeconds
+                ) {
+                    return@mapNotNull null
+                }
+                Offset(xFor(seconds), yFor(hz)) to hz
             }
-            Offset(xFor(seconds), yFor(hz)) to hz
-        }
 
-        fun drawSegment(
-            start: Offset,
-            end: Offset,
-            startHz: Float,
-            endHz: Float,
-        ) {
-            val startAbove = start.y < thresholdY
-            val endAbove = end.y < thresholdY
-            when {
-                startAbove && endAbove -> drawLine(
-                    color = pink,
-                    start = start,
-                    end = end,
-                    strokeWidth = 3.dp.toPx(),
-                    cap = StrokeCap.Round,
-                )
-
-                !startAbove && !endAbove -> drawLine(
-                    color = blue,
-                    start = start,
-                    end = end,
-                    strokeWidth = 3.dp.toPx(),
-                    cap = StrokeCap.Round,
-                )
-
-                else -> {
-                    val crossingFraction = ((thresholdHz - startHz) / (endHz - startHz))
-                        .coerceIn(0f, 1f)
-                    val crossing = Offset(
-                        x = start.x + (end.x - start.x) * crossingFraction,
-                        y = thresholdY,
-                    )
-                    val upperStart = if (startAbove) start else crossing
-                    val upperEnd = if (startAbove) crossing else end
-                    val lowerStart = if (startAbove) crossing else start
-                    val lowerEnd = if (startAbove) end else crossing
-                    drawLine(
+            fun drawSegment(
+                start: Offset,
+                end: Offset,
+                startHz: Float,
+                endHz: Float,
+            ) {
+                val startAbove = startHz > thresholdHz
+                val endAbove = endHz > thresholdHz
+                when {
+                    startAbove && endAbove -> drawLine(
                         color = pink,
-                        start = upperStart,
-                        end = upperEnd,
+                        start = start,
+                        end = end,
                         strokeWidth = 3.dp.toPx(),
                         cap = StrokeCap.Round,
                     )
-                    drawLine(
+
+                    !startAbove && !endAbove -> drawLine(
                         color = blue,
-                        start = lowerStart,
-                        end = lowerEnd,
+                        start = start,
+                        end = end,
                         strokeWidth = 3.dp.toPx(),
                         cap = StrokeCap.Round,
+                    )
+
+                    else -> {
+                        val crossingFraction = ((thresholdHz - startHz) / (endHz - startHz))
+                            .coerceIn(0f, 1f)
+                        val crossing = Offset(
+                            x = start.x + (end.x - start.x) * crossingFraction,
+                            y = yFor(thresholdHz),
+                        )
+                        val upperStart = if (startAbove) start else crossing
+                        val upperEnd = if (startAbove) crossing else end
+                        val lowerStart = if (startAbove) crossing else start
+                        val lowerEnd = if (startAbove) end else crossing
+                        drawLine(
+                            color = pink,
+                            start = upperStart,
+                            end = upperEnd,
+                            strokeWidth = 3.dp.toPx(),
+                            cap = StrokeCap.Round,
+                        )
+                        drawLine(
+                            color = blue,
+                            start = lowerStart,
+                            end = lowerEnd,
+                            strokeWidth = 3.dp.toPx(),
+                            cap = StrokeCap.Round,
+                        )
+                    }
+                }
+            }
+
+            points.zipWithNext().forEach { (previous, current) ->
+                val (previousPoint, previousHz) = previous
+                val (currentPoint, currentHz) = current
+                val gapSeconds =
+                    (currentPoint.x - previousPoint.x) / size.width * windowSeconds
+                if (gapSeconds <= maximumGapSeconds) {
+                    drawSegment(
+                        start = previousPoint,
+                        end = currentPoint,
+                        startHz = previousHz,
+                        endHz = currentHz,
                     )
                 }
             }
+
+            drawLine(
+                color = accent,
+                start = Offset(size.width / 2f, 0f),
+                end = Offset(size.width / 2f, size.height),
+                strokeWidth = 3.dp.toPx(),
+                cap = StrokeCap.Round,
+            )
         }
 
-        points.zipWithNext().forEach { (previous, current) ->
-            val (previousPoint, previousHz) = previous
-            val (currentPoint, currentHz) = current
-            val gapSeconds =
-                (currentPoint.x - previousPoint.x) / size.width * windowSeconds
-            if (gapSeconds <= maximumGapSeconds) {
-                drawSegment(
-                    start = previousPoint,
-                    end = currentPoint,
-                    startHz = previousHz,
-                    endHz = currentHz,
+        Text(
+            text = "165Hz",
+            modifier = Modifier.offset(y = thresholdY + 2.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = thresholdLabelColor,
+        )
+
+        currentF0?.let { hz ->
+            val color = if (hz > thresholdHz) pink else blue
+            val currentY = maxHeight * (1f - hz.coerceIn(0f, maximumHz) / maximumHz)
+            val labelY = (currentY + 8.dp).coerceIn(0.dp, maxHeight - 24.dp)
+            Surface(
+                modifier = Modifier.offset(
+                    x = maxWidth / 2 + 8.dp,
+                    y = labelY,
+                ),
+                shape = RoundedCornerShape(6.dp),
+                color = labelBackground,
+                contentColor = color,
+                border = BorderStroke(1.dp, color),
+            ) {
+                Text(
+                    text = "%.0f".format(hz),
+                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
                 )
             }
         }
     }
+}
+
+
+private fun f0At(seconds: Double, windows: List<F0Window>): Float? {
+    windows.firstOrNull { window ->
+        seconds in window.startSeconds..window.endSeconds && window.f0Hz != null
+    }?.let { return it.f0Hz?.toFloat() }
+
+    return windows.asSequence()
+        .filter { it.f0Hz != null }
+        .minByOrNull { window ->
+            abs((window.startSeconds + window.endSeconds) / 2.0 - seconds)
+        }
+        ?.takeIf { window ->
+            abs((window.startSeconds + window.endSeconds) / 2.0 - seconds) <= 0.2
+        }
+        ?.f0Hz
+        ?.toFloat()
 }
 
 @Composable
@@ -425,7 +502,6 @@ private fun BasicWaveform(
     audio: RecordedAudio,
     positionSeconds: Double,
     windowSeconds: Double,
-    accent: Color,
     contentColor: Color,
 ) {
     val waveform = audio.waveform
@@ -464,13 +540,5 @@ private fun BasicWaveform(
             )
         }
 
-        val centerX = size.width / 2f
-        drawLine(
-            color = accent,
-            start = Offset(centerX, 0f),
-            end = Offset(centerX, size.height),
-            strokeWidth = 3.dp.toPx(),
-            cap = StrokeCap.Round,
-        )
     }
 }
