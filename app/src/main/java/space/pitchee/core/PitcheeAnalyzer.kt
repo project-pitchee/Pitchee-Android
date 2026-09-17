@@ -54,22 +54,22 @@ data class PitcheeProgress(
             ).coerceIn(0f, 1f)
 }
 
-// F0 and VFP dominate inference time. The three naturalness stages share no
-// more than 20% of the overall bar so the result cannot appear almost done.
+// Profiled on PHT110 with a 6.8-second speech sample. VFP and naturalness
+// embedding extraction account for most of the inference time.
 private val stageWeights = floatArrayOf(
-    0.03f, // loading audio
-    0.03f, // resampling
-    0.18f, // analyzing F0
-    0.06f, // detecting speech
-    0.04f, // preparing VFP windows
-    0.18f, // extracting VFP embeddings
-    0.08f, // classifying VFP windows
-    0.04f, // preparing naturalness windows
-    0.09f, // extracting naturalness embeddings
-    0.07f, // scoring naturalness windows
-    0.11f, // calculating scores
-    0.07f, // serializing result
-    0.02f, // completed
+    0.000f, // loading audio
+    0.003f, // resampling
+    0.022f, // analyzing F0
+    0.012f, // detecting speech
+    0.001f, // preparing VFP windows
+    0.595f, // extracting VFP embeddings
+    0.002f, // classifying VFP windows
+    0.001f, // preparing naturalness windows
+    0.364f, // extracting naturalness embeddings
+    0.000f, // scoring naturalness windows
+    0.000f, // calculating scores
+    0.000f, // serializing result
+    0.001f, // completed
 )
 
 private val stageStarts = FloatArray(stageWeights.size).also { starts ->

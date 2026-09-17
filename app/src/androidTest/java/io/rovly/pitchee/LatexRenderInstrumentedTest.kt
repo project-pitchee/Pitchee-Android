@@ -31,13 +31,10 @@ class LatexRenderInstrumentedTest {
             """.trimIndent(),
             """
             $$
-            \begin{multline}
-            Base = 100 \times \left(
-            0.50Standard_r + 0.20Naturalness_r
-            \\
+            Base = 100 \times \left(\begin{gathered}
+            0.50Standard_r + 0.20Naturalness_r\\
             + 0.15F0_r + 0.15Standard_rNaturalness_rF0_r
-            \right)
-            \end{multline}
+            \end{gathered}\right)
             $$
             """.trimIndent(),
         )

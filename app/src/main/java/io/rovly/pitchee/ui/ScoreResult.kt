@@ -711,7 +711,7 @@ private fun scoreIndicators(
 }
 
 private fun scoreTier(score: Double, passed: Boolean): String {
-    if (!passed) return "需要提升"
+    if (!passed) return "综分限制项"
     return when (score.coerceAtLeast(50.0)) {
         in 50.0..<60.0 -> "好"
         in 60.0..<70.0 -> "良好"
@@ -806,7 +806,7 @@ private fun FormulaView(formulas: List<String>) {
                             .textColor(textColor)
                             .blockTextColor(textColor)
                             .blockFitCanvas(true)
-                            .blockPadding(JLatexMathTheme.Padding.all(0))
+                            .blockPadding(JLatexMathTheme.Padding.symmetric(6, 12))
                     },
                 ),
             )
@@ -822,7 +822,7 @@ private fun FormulaView(formulas: List<String>) {
                     size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height),
                 )
             }
-            .padding(start = 14.dp, top = 8.dp, bottom = 8.dp),
+            .padding(start = 14.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
     ) {
         formulas.forEachIndexed { index, formula ->
             AndroidView(
@@ -851,10 +851,10 @@ private fun FormulaView(formulas: List<String>) {
 
 private fun latexBlock(body: String): String {
     val lines = body.lines().filter { it.isNotBlank() }
-    val content = if (lines.size > 1) {
-        "\\begin{multline}\n${lines.joinToString(" \\\\\n")}\n\\end{multline}"
-    } else {
-        lines.single()
+    val content = when {
+        lines.size == 1 -> lines.single()
+        body.contains("\\begin{") -> body
+        else -> "\\begin{gathered}\n${lines.joinToString(" \\\\\n")}\n\\end{gathered}"
     }
     return "\$\$\n$content\n\$\$"
 }
@@ -877,10 +877,10 @@ private val commonScoreFormulas = listOf(
     """Naturalness_r = \max(0, \min(1, N_1))""",
     """F_1 = \frac{F0 - 110}{90}""",
     """F0_r = \max(0, \min(1, F_1))""",
-    """Base = 100 \times \left(
-0.50Standard_r + 0.20Naturalness_r
+    """Base = 100 \times \left(\begin{gathered}
+0.50Standard_r + 0.20Naturalness_r\\
 + 0.15F0_r + 0.15Standard_rNaturalness_rF0_r
-\right)""",
+\end{gathered}\right)""",
     """Final = rule(Base, Standard, Naturalness, F0)""",
 )
 

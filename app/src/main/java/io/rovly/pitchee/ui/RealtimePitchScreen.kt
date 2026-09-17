@@ -113,7 +113,7 @@ internal fun RealtimePitchScreen() {
             Text(
                 text = stringResource(R.string.pitch_subtitle),
                 modifier = Modifier.fillMaxWidth(),
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(18.dp))

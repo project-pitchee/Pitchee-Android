@@ -7,21 +7,34 @@ import space.pitchee.core.PitcheeProgressStage
 
 class PitcheeProgressTest {
     @Test
-    fun naturalnessStagesContributeAtMostTwentyPercent() {
-        val start = PitcheeProgress(
-            stage = PitcheeProgressStage.PREPARING_NATURALNESS_WINDOWS,
+    fun embeddingWeightsMatchMeasuredRuntime() {
+        val vfpStart = PitcheeProgress(
+            stage = PitcheeProgressStage.EXTRACTING_VFP_EMBEDDINGS,
             completed = 0,
             total = 1,
             stageFraction = 0f,
         ).overallFraction
-        val end = PitcheeProgress(
-            stage = PitcheeProgressStage.SCORING_NATURALNESS_WINDOWS,
+        val vfpEnd = PitcheeProgress(
+            stage = PitcheeProgressStage.EXTRACTING_VFP_EMBEDDINGS,
+            completed = 1,
+            total = 1,
+            stageFraction = 1f,
+        ).overallFraction
+        val naturalnessStart = PitcheeProgress(
+            stage = PitcheeProgressStage.EXTRACTING_NATURALNESS_EMBEDDINGS,
+            completed = 0,
+            total = 1,
+            stageFraction = 0f,
+        ).overallFraction
+        val naturalnessEnd = PitcheeProgress(
+            stage = PitcheeProgressStage.EXTRACTING_NATURALNESS_EMBEDDINGS,
             completed = 1,
             total = 1,
             stageFraction = 1f,
         ).overallFraction
 
-        assertEquals(0.20f, end - start, 0.0001f)
+        assertEquals(0.595f, vfpEnd - vfpStart, 0.0001f)
+        assertEquals(0.364f, naturalnessEnd - naturalnessStart, 0.0001f)
     }
 
     @Test

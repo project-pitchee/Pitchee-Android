@@ -52,6 +52,9 @@ import space.pitchee.core.PitcheePhase
 import space.pitchee.core.PitcheeProgress
 import space.pitchee.core.PitcheeProgressStage
 
+private const val PRE_ANALYSIS_DECODE_PROGRESS = 0.04f
+private const val PRE_ANALYSIS_PROGRESS_WEIGHT = 0.11f
+
 private enum class RecordVisualMode {
     IDLE,
     RECORDING,
@@ -137,7 +140,7 @@ internal fun RecordingStage(
         label = "recording-progress",
     )
     val analysisProgress by animateFloatAsState(
-        targetValue = analyzing?.progress?.overallFraction ?: 0f,
+        targetValue = analyzing?.analysisTargetProgress() ?: 0f,
         animationSpec = spring(
             dampingRatio = 0.86f,
             stiffness = 80f,
@@ -256,20 +259,12 @@ internal fun RecordingStage(
                                             cornerRadius = CornerRadius(5.dp.toPx()),
                                         )
                                     }
-                                    RecordVisualMode.ANALYZING -> if (analyzing?.progress != null) {
-                                        CircularProgressIndicator(
-                                            progress = { progress },
-                                            modifier = Modifier.size(34.dp),
-                                            strokeWidth = 3.dp,
-                                            color = primaryColor,
-                                        )
-                                    } else {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(34.dp),
-                                            strokeWidth = 3.dp,
-                                            color = primaryColor,
-                                        )
-                                    }
+                                    RecordVisualMode.ANALYZING -> CircularProgressIndicator(
+                                        progress = { progress },
+                                        modifier = Modifier.size(34.dp),
+                                        strokeWidth = 3.dp,
+                                        color = primaryColor,
+                                    )
                                 }
                             }
                         }
@@ -342,6 +337,18 @@ private fun ReadingPassageText(modifier: Modifier = Modifier) {
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+private fun RecordUiState.Analyzing.analysisTargetProgress(): Float {
+    val coreProgress = progress?.overallFraction ?: return when (phase) {
+        PitcheePhase.LOADING_AUDIO -> PRE_ANALYSIS_DECODE_PROGRESS
+        PitcheePhase.PREPARING_MODELS,
+        PitcheePhase.ANALYZING,
+        -> PRE_ANALYSIS_PROGRESS_WEIGHT
+        PitcheePhase.COMPLETED -> 1f
+    }
+    return PRE_ANALYSIS_PROGRESS_WEIGHT +
+        (1f - PRE_ANALYSIS_PROGRESS_WEIGHT) * coreProgress
 }
 
 @Composable

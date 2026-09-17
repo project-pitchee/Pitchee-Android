@@ -120,7 +120,7 @@ class RecordViewModel(
     }
 
     fun stopAndAnalyze() {
-        if (mutableState.value !is RecordUiState.Recording) return
+        val recording = mutableState.value as? RecordUiState.Recording ?: return
 
         timerJob?.cancel()
         timerJob = null
@@ -128,6 +128,12 @@ class RecordViewModel(
             recorder.stop()
         } catch (error: Throwable) {
             mutableState.value = RecordUiState.Error(error.message ?: "录音失败")
+            return
+        }
+
+        if (recording.elapsedSeconds < MINIMUM_RECORDING_SECONDS) {
+            file.delete()
+            mutableState.value = RecordUiState.Error("录音时长不足 5 秒，请重新录制")
             return
         }
 
@@ -185,17 +191,6 @@ class RecordViewModel(
                             currentMetrics.meanF0Hz?.toFloat() ?: NO_PREVIOUS_F0,
                         )
                         .apply()
-                    mutableState.value = RecordUiState.Analyzing(
-                        phase = PitcheePhase.COMPLETED,
-                        progress = PitcheeProgress(
-                            stage = PitcheeProgressStage.COMPLETED,
-                            completed = 1,
-                            total = 1,
-                            stageFraction = 1f,
-                        ),
-                        audio = recordedAudio,
-                    )
-                    delay(COMPLETION_HOLD_MS)
                     mutableState.value = RecordUiState.Success(
                         result = result,
                         audio = recordedAudio,
@@ -270,8 +265,8 @@ class RecordViewModel(
     companion object {
         const val MAX_RECORDING_SECONDS = 20f
         const val MINIMUM_SPEECH_SECONDS = 5.0
+        private const val MINIMUM_RECORDING_SECONDS = 5f
         private const val TIMER_INTERVAL_MS = 16L
-        private const val COMPLETION_HOLD_MS = 900L
         private const val SCORE_HISTORY_NAME = "score_history"
         private const val KEY_LAST_RESULT_SCORE = "last_result_score"
         private const val KEY_LAST_STANDARD_SCORE = "last_standard_score"

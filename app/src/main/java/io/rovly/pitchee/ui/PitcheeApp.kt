@@ -262,14 +262,22 @@ private fun RecordAnalysisScreen() {
             }
             is RecordUiState.Error -> {
                 if (current.audio == null) {
-                    RecordingStage(
-                        state = RecordUiState.Ready,
-                        onStart = {
-                            viewModel.reset()
-                            startRecording()
-                        },
-                        onStop = {},
-                    )
+                    ScreenColumn {
+                        ErrorCard(current.message)
+                        Spacer(Modifier.height(12.dp))
+                        TextButton(
+                            onClick = {
+                                viewModel.reset()
+                                startRecording()
+                            },
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
+                            modifier = Modifier.align(Alignment.CenterHorizontally),
+                        ) {
+                            Text("重新录音")
+                        }
+                    }
                 } else {
                     ScreenColumn {
                         RecordedAudioTimeline(
