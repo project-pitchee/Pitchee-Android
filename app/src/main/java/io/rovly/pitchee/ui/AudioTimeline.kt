@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import io.rovly.pitchee.R
+import io.rovly.pitchee.data.F0Window
 import io.rovly.pitchee.data.RecordedAudio
 import kotlin.math.max
 import kotlin.math.min
@@ -104,6 +105,7 @@ internal fun LiveWaveform(
 @Composable
 internal fun RecordedAudioTimeline(
     audio: RecordedAudio,
+    f0Windows: List<F0Window> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     val darkTheme = isSystemInDarkTheme()
@@ -270,6 +272,13 @@ internal fun RecordedAudioTimeline(
                     )
                 }
                 Spacer(Modifier.height(12.dp))
+                F0Track(
+                    f0Windows = f0Windows,
+                    positionSeconds = positionMs / 1000.0,
+                    windowSeconds = windowSeconds,
+                    thresholdColor = playerContent.copy(alpha = 0.34f),
+                )
+                Spacer(Modifier.height(8.dp))
                 BasicWaveform(
                     audio = audio,
                     positionSeconds = positionMs / 1000.0,
@@ -286,6 +295,125 @@ internal fun RecordedAudioTimeline(
                 Icon(
                     painter = painterResource(R.drawable.ic_play),
                     contentDescription = "展开并播放",
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun F0Track(
+    f0Windows: List<F0Window>,
+    positionSeconds: Double,
+    windowSeconds: Double,
+    thresholdColor: Color,
+) {
+    val pink = Color(0xFFFFB6C1)
+    val blue = Color(0xFF6495ED)
+
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(112.dp),
+    ) {
+        val thresholdHz = 165f
+        val minimumHz = 80f
+        val maximumHz = 300f
+        val thresholdY = size.height -
+            (thresholdHz - minimumHz) / (maximumHz - minimumHz) * size.height
+        val viewportStart = positionSeconds - windowSeconds / 2.0
+        val maximumGapSeconds = 0.35
+
+        drawLine(
+            color = thresholdColor,
+            start = Offset(0f, thresholdY),
+            end = Offset(size.width, thresholdY),
+            strokeWidth = 1.5.dp.toPx(),
+        )
+
+        fun xFor(seconds: Double): Float =
+            ((seconds - viewportStart) / windowSeconds).toFloat() * size.width
+
+        fun yFor(hz: Float): Float =
+            size.height - (hz.coerceIn(minimumHz, maximumHz) - minimumHz) /
+                (maximumHz - minimumHz) * size.height
+
+        val points = f0Windows.mapNotNull { window ->
+            val hz = window.f0Hz?.toFloat() ?: return@mapNotNull null
+            val seconds = (window.startSeconds + window.endSeconds) / 2.0
+            if (seconds < viewportStart - maximumGapSeconds ||
+                seconds > viewportStart + windowSeconds + maximumGapSeconds
+            ) {
+                return@mapNotNull null
+            }
+            Offset(xFor(seconds), yFor(hz)) to hz
+        }
+
+        fun drawSegment(
+            start: Offset,
+            end: Offset,
+            startHz: Float,
+            endHz: Float,
+        ) {
+            val startAbove = start.y < thresholdY
+            val endAbove = end.y < thresholdY
+            when {
+                startAbove && endAbove -> drawLine(
+                    color = pink,
+                    start = start,
+                    end = end,
+                    strokeWidth = 3.dp.toPx(),
+                    cap = StrokeCap.Round,
+                )
+
+                !startAbove && !endAbove -> drawLine(
+                    color = blue,
+                    start = start,
+                    end = end,
+                    strokeWidth = 3.dp.toPx(),
+                    cap = StrokeCap.Round,
+                )
+
+                else -> {
+                    val crossingFraction = ((thresholdHz - startHz) / (endHz - startHz))
+                        .coerceIn(0f, 1f)
+                    val crossing = Offset(
+                        x = start.x + (end.x - start.x) * crossingFraction,
+                        y = thresholdY,
+                    )
+                    val upperStart = if (startAbove) start else crossing
+                    val upperEnd = if (startAbove) crossing else end
+                    val lowerStart = if (startAbove) crossing else start
+                    val lowerEnd = if (startAbove) end else crossing
+                    drawLine(
+                        color = pink,
+                        start = upperStart,
+                        end = upperEnd,
+                        strokeWidth = 3.dp.toPx(),
+                        cap = StrokeCap.Round,
+                    )
+                    drawLine(
+                        color = blue,
+                        start = lowerStart,
+                        end = lowerEnd,
+                        strokeWidth = 3.dp.toPx(),
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
+        }
+
+        points.zipWithNext().forEach { (previous, current) ->
+            val (previousPoint, previousHz) = previous
+            val (currentPoint, currentHz) = current
+            val gapSeconds =
+                (currentPoint.x - previousPoint.x) / size.width * windowSeconds
+            if (gapSeconds <= maximumGapSeconds) {
+                drawSegment(
+                    start = previousPoint,
+                    end = currentPoint,
+                    startHz = previousHz,
+                    endHz = currentHz,
                 )
             }
         }
