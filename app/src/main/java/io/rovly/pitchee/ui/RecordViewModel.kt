@@ -13,7 +13,9 @@ import io.rovly.pitchee.data.AudioRecorder
 import io.rovly.pitchee.data.PitcheeRepository
 import io.rovly.pitchee.data.PitcheeResult
 import io.rovly.pitchee.data.RecordedAudio
+import io.rovly.pitchee.data.SpeechSegmentScore
 import io.rovly.pitchee.data.hasSpeechSecondsAtLeast
+import io.rovly.pitchee.data.scoreSpeechSegments
 import space.pitchee.core.PitcheePhase
 import space.pitchee.core.PitcheeProgress
 import space.pitchee.core.PitcheeProgressStage
@@ -52,6 +54,7 @@ sealed interface RecordUiState {
         val audio: RecordedAudio,
         val previousScore: Double?,
         val previousMetrics: PreviousMetrics?,
+        val segmentScores: List<SpeechSegmentScore>,
         val scoreAnimationToken: Long,
     ) : RecordUiState
 
@@ -172,6 +175,7 @@ class RecordViewModel(
                 } else {
                     val previousScore = lastResultScore
                     val previousMetrics = lastResultMetrics
+                    val segmentScores = scoreSpeechSegments(result)
                     val currentMetrics = PreviousMetrics(
                         standardScore = result.vfp.standardScore,
                         naturalnessScore = result.naturalness.score,
@@ -196,6 +200,7 @@ class RecordViewModel(
                         audio = recordedAudio,
                         previousScore = previousScore,
                         previousMetrics = previousMetrics,
+                        segmentScores = segmentScores,
                         scoreAnimationToken = ++resultSequence,
                     )
                 }

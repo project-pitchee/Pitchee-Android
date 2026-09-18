@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.rovly.pitchee.data.FeminineTimeline
 import io.rovly.pitchee.data.PitcheeRepository
+import io.rovly.pitchee.data.scoreSpeechSegments
 import space.pitchee.core.PitcheeProgressStage
 import java.io.File
 import java.nio.ByteBuffer
@@ -12,6 +13,7 @@ import java.nio.ByteOrder
 import kotlin.math.PI
 import kotlin.math.sin
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -102,6 +104,13 @@ class PitcheeRepositoryInstrumentedTest {
                 assertTrue(
                     "Expected the synthetic speech to produce a VFP window",
                     result.vfp.windowCount > 0,
+                )
+                assertEquals(0.05, result.f0.windowSeconds, 0.0001)
+                val segmentScores = scoreSpeechSegments(result)
+                assertEquals(result.vad.segments.size, segmentScores.size)
+                assertTrue(
+                    "Every VAD segment should receive a score in [0, 100]",
+                    segmentScores.all { it.score in 0.0..100.0 },
                 )
                 assertTrue(
                     "Native detailed progress was not invoked: ${progressUpdates.size}",

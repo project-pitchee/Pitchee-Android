@@ -102,6 +102,19 @@ repository.close()
 `analyze` 在 IO 线程解码音频，`analyzePcm` 在 CPU 线程执行模型推理。
 Repository 会串行化 native 调用，因为同一个 `pitchee_analyzer_t` 不能并发使用。
 
+只需要三指标综合分时，可以直接调用 Core 的便捷接口：
+
+```kotlin
+val score = PitcheeAnalyzer.compositeScoreValue(
+    vfpStandardScore = 72.0,
+    naturalnessScore = 80.0,
+    f0Hz = 178.0,
+)
+```
+
+没有可靠 F0 时传 `null`。Android 端会将其转换为 `NAN` 后调用
+`pitchee_composite_score_value`。
+
 实时 F0 流复用 Repository 中已加载的 analyzer：
 
 ```kotlin

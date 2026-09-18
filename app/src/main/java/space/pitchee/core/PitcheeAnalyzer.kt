@@ -208,8 +208,25 @@ class PitcheeAnalyzer private constructor(private var nativeHandle: Long) : Clos
             return PitcheeAnalyzer(nativeCreate(modelDirectory, threads))
         }
 
+        fun compositeScoreValue(
+            vfpStandardScore: Double,
+            naturalnessScore: Double,
+            f0Hz: Double?,
+        ): Double = nativeCompositeScoreValue(
+            vfpStandardScore,
+            naturalnessScore,
+            f0Hz ?: Double.NaN,
+        )
+
         @JvmStatic
         private external fun nativeCreate(modelDirectory: String, threads: Int): Long
+
+        @JvmStatic
+        private external fun nativeCompositeScoreValue(
+            vfpStandardScore: Double,
+            naturalnessScore: Double,
+            f0Hz: Double,
+        ): Double
 
         private const val DEFAULT_F0_CONTEXT_SAMPLES = 5120
         private const val DEFAULT_F0_HOP_SAMPLES = 256

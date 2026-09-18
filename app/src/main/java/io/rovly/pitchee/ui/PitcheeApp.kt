@@ -241,6 +241,7 @@ private fun RecordAnalysisScreen() {
                                     RecordedAudioTimeline(
                                         audio = current.audio,
                                         f0Windows = current.result.f0.windows,
+                                        segmentScores = current.segmentScores,
                                     )
                                 }
                                 Spacer(Modifier.height(12.dp))

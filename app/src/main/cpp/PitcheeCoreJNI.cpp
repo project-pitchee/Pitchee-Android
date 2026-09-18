@@ -232,6 +232,21 @@ Java_space_pitchee_core_PitcheeAnalyzer_nativeAnalyzeWithProgress(
     return result;
 }
 
+extern "C" JNIEXPORT jdouble JNICALL
+Java_space_pitchee_core_PitcheeAnalyzer_nativeCompositeScoreValue(
+    JNIEnv*,
+    jclass,
+    jdouble vfp_standard_score,
+    jdouble naturalness_score,
+    jdouble f0_hz
+) {
+    return pitchee_composite_score_value(
+        vfp_standard_score,
+        naturalness_score,
+        f0_hz
+    );
+}
+
 extern "C" JNIEXPORT jlong JNICALL
 Java_space_pitchee_core_PitcheeAnalyzer_nativeRealtimeF0Create(
     JNIEnv* env,

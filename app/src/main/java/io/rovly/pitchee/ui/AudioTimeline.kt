@@ -6,7 +6,6 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -54,7 +53,9 @@ import androidx.compose.ui.unit.dp
 import io.rovly.pitchee.R
 import io.rovly.pitchee.data.F0Window
 import io.rovly.pitchee.data.RecordedAudio
+import io.rovly.pitchee.data.SpeechSegmentScore
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -66,6 +67,16 @@ private val ScoreColors = listOf(
     Color(0xFF57A773),
     Color(0xFF168C80),
 )
+
+private data class F0Sample(
+    val seconds: Double,
+    val hz: Float,
+)
+
+private const val F0_SAMPLE_STEP_SECONDS = 0.004
+private const val F0_MAXIMUM_HZ = 600f
+private const val F0_MINIMUM_DISPLAY_HZ = 300f
+private const val F0_MAXIMUM_GAP_SECONDS = 0.35
 
 internal fun feminineScoreColor(score: Double): Color = when {
     score < 20.0 -> ScoreColors[0]
@@ -114,6 +125,7 @@ internal fun LiveWaveform(
 internal fun RecordedAudioTimeline(
     audio: RecordedAudio,
     f0Windows: List<F0Window> = emptyList(),
+    segmentScores: List<SpeechSegmentScore> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     val darkTheme = isSystemInDarkTheme()
@@ -292,9 +304,9 @@ internal fun RecordedAudioTimeline(
                     ) {
                         BasicWaveform(
                             audio = audio,
+                            segmentScores = segmentScores,
                             positionSeconds = positionMs / 1000.0,
                             windowSeconds = windowSeconds,
-                            contentColor = playerContent,
                         )
                     }
                     F0Track(
@@ -304,7 +316,6 @@ internal fun RecordedAudioTimeline(
                         accent = playerAccent,
                         thresholdColor = playerContent.copy(alpha = 0.34f),
                         thresholdLabelColor = playerContent.copy(alpha = 0.38f),
-                        labelBackground = playerBackground,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -331,12 +342,25 @@ private fun F0Track(
     accent: Color,
     thresholdColor: Color,
     thresholdLabelColor: Color,
-    labelBackground: Color,
     modifier: Modifier = Modifier,
 ) {
     val pink = Color(0xFFFFB6C1)
     val blue = Color(0xFF6495ED)
-    val targetF0 = f0At(positionSeconds, f0Windows)
+    val allF0Samples = remember(f0Windows) {
+        f0Windows.mapNotNull { window ->
+            val hz = window.f0Hz?.toFloat() ?: return@mapNotNull null
+            F0Sample(
+                seconds = (window.startSeconds + window.endSeconds) / 2.0,
+                hz = hz,
+            )
+        }.sortedBy { it.seconds }
+    }
+    val smoothF0Path = remember(allF0Samples) {
+        smoothF0Samples(allF0Samples, F0_MAXIMUM_GAP_SECONDS)
+    }
+    val targetF0 = remember(positionSeconds, smoothF0Path) {
+        f0SampleAt(positionSeconds, smoothF0Path)?.hz
+    }
     val animatedF0 = remember { Animatable(targetF0 ?: 0f) }
 
     LaunchedEffect(targetF0) {
@@ -354,10 +378,12 @@ private fun F0Track(
 
     BoxWithConstraints(modifier = modifier) {
         val thresholdHz = 165f
-        val maximumHz = 300f
+        val maximumHz = remember(smoothF0Path) {
+            val peakHz = smoothF0Path.maxOfOrNull { it.hz } ?: F0_MINIMUM_DISPLAY_HZ
+            (ceil(peakHz / 50f) * 50f).coerceIn(F0_MINIMUM_DISPLAY_HZ, F0_MAXIMUM_HZ)
+        }
         val thresholdY = maxHeight * (1f - thresholdHz / maximumHz)
         val viewportStart = positionSeconds - windowSeconds / 2.0
-        val maximumGapSeconds = 0.35
 
         Canvas(Modifier.fillMaxSize()) {
             drawLine(
@@ -373,15 +399,9 @@ private fun F0Track(
             fun yFor(hz: Float): Float =
                 size.height - hz.coerceIn(0f, maximumHz) / maximumHz * size.height
 
-            val points = f0Windows.mapNotNull { window ->
-                val hz = window.f0Hz?.toFloat() ?: return@mapNotNull null
-                val seconds = (window.startSeconds + window.endSeconds) / 2.0
-                if (seconds < viewportStart - maximumGapSeconds ||
-                    seconds > viewportStart + windowSeconds + maximumGapSeconds
-                ) {
-                    return@mapNotNull null
-                }
-                Offset(xFor(seconds), yFor(hz)) to hz
+            val samples = smoothF0Path.filter { sample ->
+                sample.seconds >= viewportStart - F0_MAXIMUM_GAP_SECONDS &&
+                    sample.seconds <= viewportStart + windowSeconds + F0_MAXIMUM_GAP_SECONDS
             }
 
             fun drawSegment(
@@ -438,19 +458,13 @@ private fun F0Track(
                 }
             }
 
-            points.zipWithNext().forEach { (previous, current) ->
-                val (previousPoint, previousHz) = previous
-                val (currentPoint, currentHz) = current
-                val gapSeconds =
-                    (currentPoint.x - previousPoint.x) / size.width * windowSeconds
-                if (gapSeconds <= maximumGapSeconds) {
-                    drawSegment(
-                        start = previousPoint,
-                        end = currentPoint,
-                        startHz = previousHz,
-                        endHz = currentHz,
-                    )
-                }
+            samples.zipWithNext().forEach { (previous, current) ->
+                drawSegment(
+                    start = Offset(xFor(previous.seconds), yFor(previous.hz)),
+                    end = Offset(xFor(current.seconds), yFor(current.hz)),
+                    startHz = previous.hz,
+                    endHz = current.hz,
+                )
             }
 
             drawLine(
@@ -473,58 +487,89 @@ private fun F0Track(
             val hz = animatedF0.value
             val color = if (hz > thresholdHz) pink else blue
             val currentY = maxHeight * (1f - hz.coerceIn(0f, maximumHz) / maximumHz)
-            val labelY = (currentY + 18.dp).coerceIn(0.dp, maxHeight - 34.dp)
+            val labelY = (currentY + 20.dp).coerceIn(0.dp, maxHeight - 36.dp)
             Surface(
                 modifier = Modifier.offset(
                     x = maxWidth / 2 + 12.dp,
                     y = labelY,
                 ),
-                shape = RoundedCornerShape(11.dp),
-                color = labelBackground,
+                shape = RoundedCornerShape(4.dp),
+                color = Color(0xFF253247),
+                contentColor = color,
+                shadowElevation = 0.dp,
+                tonalElevation = 0.dp,
             ) {
-                Surface(
-                    modifier = Modifier.padding(4.dp),
-                    shape = RoundedCornerShape(7.dp),
-                    color = labelBackground,
-                    contentColor = color,
-                    border = BorderStroke(1.5.dp, color),
-                ) {
-                    Text(
-                        text = "%.0f".format(hz),
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
+                Text(
+                    text = "%.0f".format(hz),
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                )
             }
         }
     }
 }
 
 
-private fun f0At(seconds: Double, windows: List<F0Window>): Float? {
-    windows.firstOrNull { window ->
-        seconds in window.startSeconds..window.endSeconds && window.f0Hz != null
-    }?.let { return it.f0Hz?.toFloat() }
+private fun smoothF0Samples(
+    samples: List<F0Sample>,
+    maximumGapSeconds: Double,
+): List<F0Sample> {
+    if (samples.size < 2) return samples
 
-    return windows.asSequence()
-        .filter { it.f0Hz != null }
-        .minByOrNull { window ->
-            abs((window.startSeconds + window.endSeconds) / 2.0 - seconds)
+    val smoothed = mutableListOf<F0Sample>()
+    var runStart = 0
+    for (index in 1..samples.size) {
+        val runEnded = index == samples.size ||
+            samples[index].seconds - samples[index - 1].seconds > maximumGapSeconds
+        if (!runEnded) continue
+
+        val run = samples.subList(runStart, index)
+        if (run.size == 1) {
+            smoothed += run.first()
+        } else {
+            run.forEachIndexed { runIndex, current ->
+                if (runIndex == 0) smoothed += current
+                if (runIndex == run.lastIndex) return@forEachIndexed
+
+                val previous = run[maxOf(0, runIndex - 1)]
+                val next = run[runIndex + 1]
+                val afterNext = run[minOf(run.lastIndex, runIndex + 2)]
+                val steps = ceil((next.seconds - current.seconds) / F0_SAMPLE_STEP_SECONDS)
+                    .toInt()
+                    .coerceAtLeast(1)
+                repeat(steps) { stepIndex ->
+                    val t = (stepIndex + 1f) / steps
+                    val t2 = t * t
+                    val t3 = t2 * t
+                    val hz = 0.5f * (
+                        2f * current.hz +
+                            (-previous.hz + next.hz) * t +
+                            (2f * previous.hz - 5f * current.hz + 4f * next.hz - afterNext.hz) * t2 +
+                            (-previous.hz + 3f * current.hz - 3f * next.hz + afterNext.hz) * t3
+                        )
+                    smoothed += F0Sample(
+                        seconds = current.seconds + (next.seconds - current.seconds) * t,
+                        hz = hz.coerceIn(0f, F0_MAXIMUM_HZ),
+                    )
+                }
+            }
         }
-        ?.takeIf { window ->
-            abs((window.startSeconds + window.endSeconds) / 2.0 - seconds) <= 0.2
-        }
-        ?.f0Hz
-        ?.toFloat()
+        runStart = index
+    }
+    return smoothed
 }
+
+private fun f0SampleAt(seconds: Double, samples: List<F0Sample>): F0Sample? =
+    samples.minByOrNull { sample -> abs(sample.seconds - seconds) }
+        ?.takeIf { sample -> abs(sample.seconds - seconds) <= 0.2 }
 
 @Composable
 private fun BasicWaveform(
     audio: RecordedAudio,
+    segmentScores: List<SpeechSegmentScore>,
     positionSeconds: Double,
     windowSeconds: Double,
-    contentColor: Color,
 ) {
     val waveform = audio.waveform
     if (waveform.isEmpty()) return
@@ -553,8 +598,12 @@ private fun BasicWaveform(
             }
             val halfHeight = amplitude * size.height * 0.43f
             val x = fraction * size.width
+            val score = segmentScores.firstOrNull { segment ->
+                time >= segment.startSeconds && time < segment.endSeconds
+            }?.score
+            val barColor = score?.let(::feminineScoreColor) ?: Color(0xFF9CA3AF)
             drawLine(
-                color = contentColor.copy(alpha = 0.76f),
+                color = barColor.copy(alpha = 0.88f),
                 start = Offset(x, centerY - halfHeight),
                 end = Offset(x, centerY + halfHeight),
                 strokeWidth = 2.dp.toPx(),
