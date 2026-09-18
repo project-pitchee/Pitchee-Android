@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -40,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -318,14 +320,22 @@ internal fun RecordingStage(
 
 @Composable
 private fun ReadingPassageText(modifier: Modifier = Modifier) {
-    var selectedIndex by rememberSaveable { mutableIntStateOf(0) }
-    val passage = readingPassages[selectedIndex]
+    val context = LocalContext.current
+    val preferences = remember(context) { PassagePreferences(context) }
+    var selectedIndex by rememberSaveable(preferences.officialIndex()) {
+        mutableIntStateOf(preferences.officialIndex())
+    }
+    val passage = preferences.activePassage(selectedIndex)
     Box(
         modifier = modifier
             .padding(bottom = 6.dp)
             .height(72.dp)
-            .clickable(onClickLabel = "切换语料") {
+            .clickable(
+                enabled = preferences.source() == PassageSource.OFFICIAL,
+                onClickLabel = "切换语料",
+            ) {
                 selectedIndex = (selectedIndex + 1) % readingPassages.size
+                preferences.setOfficialIndex(selectedIndex)
             },
         contentAlignment = Alignment.CenterStart,
     ) {

@@ -4,6 +4,7 @@ import android.media.MediaPlayer
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
@@ -524,13 +525,20 @@ private fun F0Track(
                 positionSeconds >= segment.startSeconds &&
                     positionSeconds < segment.endSeconds
             }?.score
+        val animatedPlaybackScore by animateFloatAsState(
+            targetValue = (playbackScore?.toFloat() ?: 0f).coerceIn(0f, 100f),
+            animationSpec = spring(
+                dampingRatio = 0.88f,
+                stiffness = 220f,
+                visibilityThreshold = 0.05f,
+            ),
+            label = "playback-score-position",
+        )
         val waveformHeight = minOf(136.dp, maxHeight)
         val waveformTop = maxHeight - waveformHeight
         val markerHeight = minOf(36.dp, waveformHeight)
         val markerWidth = 58.dp
-        val scoreProgress = (
-            playbackScore?.toFloat() ?: 0f
-            ).coerceIn(0f, 100f) / 100f
+        val scoreProgress = animatedPlaybackScore / 100f
         val markerCenterY = waveformTop + waveformHeight * (1f - scoreProgress)
         val markerY = (markerCenterY - markerHeight / 2f)
             .coerceIn(waveformTop, waveformTop + waveformHeight - markerHeight)

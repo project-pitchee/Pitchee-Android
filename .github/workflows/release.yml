@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version without the v prefix, for example 1.2.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Require signing secrets
+        shell: bash
+        env:
+          KEYSTORE: ${{ secrets.PITCHEE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.PITCHEE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.PITCHEE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.PITCHEE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::Configure PITCHEE_KEYSTORE_BASE64, PITCHEE_STORE_PASSWORD, PITCHEE_KEY_ALIAS and PITCHEE_KEY_PASSWORD."
+            exit 1
+          fi
+
+      - name: Prepare signing key
+        shell: bash
+        env:
+          KEYSTORE: ${{ secrets.PITCHEE_KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/pitchee-release.jks"
+          echo "PITCHEE_KEYSTORE_PATH=$RUNNER_TEMP/pitchee-release.jks" >> "$GITHUB_ENV"
+
+      - name: Compute version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+            VERSION="${VERSION#v}"
+            TAG="v$VERSION"
+          else
+            TAG="${GITHUB_REF_NAME}"
+            VERSION="${TAG#v}"
+          fi
+          CODE="$(python3 -c 'import sys; p=[int(x) for x in sys.argv[1].split(".")]; p += [0]*(3-len(p)); print(p[0]*1000000+p[1]*1000+p[2])' "$VERSION")"
+          echo "name=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Build release APK
+        env:
+          PITCHEE_STORE_PASSWORD: ${{ secrets.PITCHEE_STORE_PASSWORD }}
+          PITCHEE_KEY_ALIAS: ${{ secrets.PITCHEE_KEY_ALIAS }}
+          PITCHEE_KEY_PASSWORD: ${{ secrets.PITCHEE_KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease \
+            -PversionName="${{ steps.version.outputs.name }}" \
+            -PversionCode="${{ steps.version.outputs.code }}"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Pitchee ${{ steps.version.outputs.name }}
+          make_latest: true
+          files: app/build/outputs/apk/release/app-release.apk

@@ -1,7 +1,6 @@
 package io.rovly.pitchee.ui
 
 import android.Manifest
-import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
@@ -22,15 +21,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -52,7 +50,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -67,6 +64,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import io.rovly.pitchee.R
 import io.rovly.pitchee.data.FeminineTimeline
 import io.rovly.pitchee.data.PitcheeResult
+import io.rovly.pitchee.update.ApkInstaller
+import io.rovly.pitchee.update.UpdateUiState
+import io.rovly.pitchee.update.UpdateViewModel
+import java.io.File
 import space.pitchee.core.PitcheePhase
 import kotlinx.coroutines.launch
 
@@ -76,7 +77,7 @@ private enum class PitcheeDestination(
 ) {
     PITCH(R.string.nav_pitch, R.drawable.ic_pitch_analysis),
     ANALYSIS(R.string.nav_analysis, R.drawable.ic_model_analysis),
-    ABOUT(R.string.nav_about, R.drawable.ic_about),
+    SETTINGS(R.string.nav_settings, R.drawable.ic_settings),
     SCORE_RULES(R.string.nav_score_test, R.drawable.ic_model_analysis),
 }
 
@@ -85,11 +86,91 @@ private enum class PitcheeDestination(
 fun PitcheeApp() {
     var selectedIndex by rememberSaveable { mutableIntStateOf(0) }
     val context = LocalContext.current
+    val updateViewModel: UpdateViewModel = viewModel(
+        factory = remember { UpdateViewModel.factory(context.applicationContext) },
+    )
+    val updateState by updateViewModel.state.collectAsStateWithLifecycle()
+    val autoCheckUpdates by updateViewModel.autoCheck.collectAsStateWithLifecycle()
+    var pendingInstallFile by remember { mutableStateOf<File?>(null) }
+    val installPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        val file = pendingInstallFile
+        pendingInstallFile = null
+        if (file != null && ApkInstaller.canInstall(context)) {
+            runCatching { ApkInstaller.install(context, file) }
+            updateViewModel.markInstallLaunched()
+        }
+    }
     val debugBuild = remember(context) {
         (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
     }
     val destinations = remember(debugBuild) {
         PitcheeDestination.entries.filter { it != PitcheeDestination.SCORE_RULES || debugBuild }
+    }
+
+    LaunchedEffect(Unit) {
+        updateViewModel.checkOnLaunch()
+    }
+
+    LaunchedEffect(updateState) {
+        val ready = updateState as? UpdateUiState.ReadyToInstall ?: return@LaunchedEffect
+        if (ApkInstaller.canInstall(context)) {
+            runCatching { ApkInstaller.install(context, ready.file) }
+            updateViewModel.markInstallLaunched()
+        } else {
+            pendingInstallFile = ready.file
+            ApkInstaller.requestInstallPermission(context)
+        }
+    }
+
+    when (val state = updateState) {
+        is UpdateUiState.Available -> AlertDialog(
+            onDismissRequest = updateViewModel::dismissUpdate,
+            title = { Text("发现新版本") },
+            text = {
+                Column {
+                    Text(state.release.displayName)
+                    if (state.release.notes.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(state.release.notes.take(600))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { updateViewModel.download(state.release) }) {
+                    Text("下载更新")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = updateViewModel::dismissUpdate) {
+                    Text("稍后")
+                }
+            },
+        )
+
+        is UpdateUiState.Downloading -> AlertDialog(
+            onDismissRequest = {},
+            title = { Text("正在下载更新") },
+            text = {
+                Column {
+                    Text(state.release.displayName)
+                    Spacer(Modifier.height(12.dp))
+                    val progress = state.progress
+                    if (progress == null) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    } else {
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+        )
+
+        else -> Unit
     }
 
     Scaffold(
@@ -129,7 +210,12 @@ fun PitcheeApp() {
             when (destinations[selectedIndex]) {
                 PitcheeDestination.PITCH -> RealtimePitchScreen()
                 PitcheeDestination.ANALYSIS -> RecordAnalysisScreen()
-                PitcheeDestination.ABOUT -> AboutScreen()
+                PitcheeDestination.SETTINGS -> SettingsScreen(
+                    updateState = updateState,
+                    autoCheckUpdates = autoCheckUpdates,
+                    onAutoCheckChange = updateViewModel::setAutoCheck,
+                    onCheckUpdates = updateViewModel::checkForUpdates,
+                )
                 PitcheeDestination.SCORE_RULES -> ScoreRulesPage(
                     result = remember { demoRuleResult() },
                     previousScore = 52.0,
@@ -453,66 +539,6 @@ private fun ErrorCard(message: String) {
 }
 
 @Composable
-private fun AboutScreen() {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val versionName = remember(context) { context.appVersionName() }
-
-    ScreenColumn {
-        ScreenHeader(
-            title = stringResource(R.string.about_title),
-            subtitle = stringResource(R.string.about_subtitle),
-        )
-        Spacer(Modifier.height(28.dp))
-        Surface(
-            modifier = Modifier
-                .size(96.dp)
-                .clip(CircleShape)
-                .align(Alignment.CenterHorizontally),
-            color = MaterialTheme.colorScheme.primary,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_model_analysis),
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                )
-            }
-        }
-        Spacer(Modifier.height(16.dp))
-        Text(
-            text = "Pitchee",
-            modifier = Modifier.fillMaxWidth(),
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-        )
-        Text(
-            text = stringResource(R.string.about_version, versionName),
-            modifier = Modifier.fillMaxWidth(),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(28.dp))
-        InformationCard(
-            title = stringResource(R.string.about_privacy_title),
-            body = stringResource(R.string.about_privacy_body),
-        )
-        Spacer(Modifier.height(12.dp))
-        InformationCard(
-            title = stringResource(R.string.about_engine_title),
-            body = stringResource(R.string.about_engine_body),
-        )
-        Spacer(Modifier.height(12.dp))
-        InformationCard(
-            title = stringResource(R.string.about_disclaimer_title),
-            body = stringResource(R.string.about_disclaimer_body),
-        )
-    }
-}
-
-@Composable
 private fun ScreenHeader(title: String, subtitle: String) {
     Text(
         text = title,
@@ -528,26 +554,6 @@ private fun ScreenHeader(title: String, subtitle: String) {
 }
 
 @Composable
-private fun InformationCard(title: String, body: String) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
-        Column(Modifier.padding(20.dp)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(body, style = MaterialTheme.typography.bodyMedium)
-        }
-    }
-}
-
-@Composable
 private fun ScreenColumn(content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier = Modifier
@@ -557,8 +563,3 @@ private fun ScreenColumn(content: @Composable ColumnScope.() -> Unit) {
         content = content,
     )
 }
-
-private fun Context.appVersionName(): String =
-    runCatching {
-        packageManager.getPackageInfo(packageName, 0).versionName
-    }.getOrNull() ?: "1.0"

@@ -61,7 +61,10 @@ internal fun RealtimePitchScreen() {
     val viewModel: PitchViewModel = viewModel(factory = factory)
     val state by viewModel.state.collectAsStateWithLifecycle()
     var permissionDenied by remember { mutableStateOf(false) }
-    var selectedPassageIndex by rememberSaveable { mutableIntStateOf(0) }
+    val passagePreferences = remember(context) { PassagePreferences(context) }
+    var selectedPassageIndex by rememberSaveable(passagePreferences.officialIndex()) {
+        mutableIntStateOf(passagePreferences.officialIndex())
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -173,7 +176,7 @@ internal fun RealtimePitchScreen() {
                 )
                 Spacer(Modifier.height(10.dp))
             }
-            val passage = readingPassages[selectedPassageIndex]
+            val passage = passagePreferences.activePassage(selectedPassageIndex)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -184,9 +187,13 @@ internal fun RealtimePitchScreen() {
                     text = passage.text,
                     modifier = Modifier
                         .weight(1f)
-                        .clickable(onClickLabel = "切换语料") {
+                        .clickable(
+                            enabled = passagePreferences.source() == PassageSource.OFFICIAL,
+                            onClickLabel = "切换语料",
+                        ) {
                             selectedPassageIndex =
                                 (selectedPassageIndex + 1) % readingPassages.size
+                            passagePreferences.setOfficialIndex(selectedPassageIndex)
                         },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,

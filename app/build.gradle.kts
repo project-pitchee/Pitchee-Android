@@ -42,6 +42,18 @@ plugins {
 }
 
 val onnxRuntimeRoot = layout.buildDirectory.dir("onnxruntime").get().asFile
+val appVersionCode = providers.gradleProperty("versionCode").orNull?.toIntOrNull() ?: 1
+val appVersionName = providers.gradleProperty("versionName").orNull ?: "1.0"
+val releaseStorePath = System.getenv("PITCHEE_KEYSTORE_PATH")
+val releaseStorePassword = System.getenv("PITCHEE_STORE_PASSWORD")
+val releaseKeyAlias = System.getenv("PITCHEE_KEY_ALIAS")
+val releaseKeyPassword = System.getenv("PITCHEE_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    releaseStorePath,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
 val onnxRuntimeAar by configurations.creating {
     isCanBeConsumed = false
     isCanBeResolved = true
@@ -75,8 +87,8 @@ android {
         applicationId = "io.rovly.pitchee"
         minSdk = 24
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -107,8 +119,19 @@ android {
         "${rootProject.projectDir}/third_party/Pitchee-core/models"
     )
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStorePath!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("release")
             optimization {
                 enable = false
             }

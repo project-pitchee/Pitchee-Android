@@ -1,0 +1,76 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      PITCHEE_KEYSTORE_BASE64: ${{ secrets.PITCHEE_KEYSTORE_BASE64 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compute version
+        id: version
+        shell: bash
+        run: |
+          NAME="nightly-$(date -u +%Y%m%d-%H%M)"
+          CODE="$(date -u +%Y%m%d%H)"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare signing key
+        shell: bash
+        env:
+          PITCHEE_STORE_PASSWORD: ${{ secrets.PITCHEE_STORE_PASSWORD }}
+          PITCHEE_KEY_ALIAS: ${{ secrets.PITCHEE_KEY_ALIAS }}
+          PITCHEE_KEY_PASSWORD: ${{ secrets.PITCHEE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$PITCHEE_KEYSTORE_BASE64" ] && [ -n "$PITCHEE_STORE_PASSWORD" ] && [ -n "$PITCHEE_KEY_ALIAS" ] && [ -n "$PITCHEE_KEY_PASSWORD" ]; then
+            echo "$PITCHEE_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/pitchee-release.jks"
+            echo "PITCHEE_KEYSTORE_PATH=$RUNNER_TEMP/pitchee-release.jks" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build APK
+        id: build
+        shell: bash
+        env:
+          PITCHEE_STORE_PASSWORD: ${{ secrets.PITCHEE_STORE_PASSWORD }}
+          PITCHEE_KEY_ALIAS: ${{ secrets.PITCHEE_KEY_ALIAS }}
+          PITCHEE_KEY_PASSWORD: ${{ secrets.PITCHEE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$PITCHEE_KEYSTORE_PATH" ]; then
+            ./gradlew assembleRelease \
+              -PversionName="${{ steps.version.outputs.name }}" \
+              -PversionCode="${{ steps.version.outputs.code }}"
+            echo "apk=app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_OUTPUT"
+          else
+            ./gradlew assembleDebug \
+              -PversionName="${{ steps.version.outputs.name }}" \
+              -PversionCode="${{ steps.version.outputs.code }}"
+            echo "apk=app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish nightly release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.name }}
+          name: ${{ steps.version.outputs.name }}
+          prerelease: true
+          files: ${{ steps.build.outputs.apk }}

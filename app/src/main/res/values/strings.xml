@@ -3,7 +3,7 @@
 
     <string name="nav_pitch">实时基频</string>
     <string name="nav_analysis">声音分析</string>
-    <string name="nav_about">关于</string>
+    <string name="nav_settings">设置</string>
     <string name="nav_score_test">规则</string>
 
     <string name="pitch_title">实时基频</string>
@@ -38,13 +38,4 @@
     <string name="record_permission_denied">需要麦克风权限才能录音和分析</string>
     <string name="analysis_failed">分析失败</string>
 
-    <string name="about_title">关于 Pitchee</string>
-    <string name="about_subtitle">设备端声音训练与趋势观察工具</string>
-    <string name="about_version">版本 %1$s</string>
-    <string name="about_privacy_title">隐私</string>
-    <string name="about_privacy_body">录音和模型推理全部在设备本地完成。Pitchee 不会上传你的录音，也不要求创建账号。</string>
-    <string name="about_engine_title">分析引擎</string>
-    <string name="about_engine_body">PitcheeCore 0.1.0，ONNX Runtime 1.24.2，模型版本 2026‑09</string>
-    <string name="about_disclaimer_title">使用说明</string>
-    <string name="about_disclaimer_body">分数用于训练反馈和趋势观察，不应作为性别身份鉴定、医疗诊断或其他高风险决策的依据。</string>
 </resources>
