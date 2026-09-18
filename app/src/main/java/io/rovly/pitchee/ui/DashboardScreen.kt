@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -18,9 +19,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -102,20 +105,10 @@ internal fun DashboardScreen(refreshKey: Any? = Unit) {
                     },
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                if (data.realtimeF0.size > 1) {
-                    Spacer(Modifier.height(18.dp))
-                    RealtimeF0Sparkline(
-                        values = data.realtimeF0
-                            .take(24)
-                            .map { it.meanF0Hz.toFloat() }
-                            .asReversed(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(84.dp),
-                    )
-                }
             }
         }
+        Spacer(Modifier.height(24.dp))
+        AnalysisMetricSection(entries = data.analyses)
         Spacer(Modifier.height(28.dp))
         Text(
             text = stringResource(R.string.dashboard_analysis_history),
@@ -141,37 +134,112 @@ internal fun DashboardScreen(refreshKey: Any? = Unit) {
     }
 }
 
+private enum class AnalysisMetric(
+    val labelRes: Int,
+) {
+    F0(R.string.dashboard_metric_f0),
+    NATURALNESS(R.string.dashboard_metric_naturalness),
+    STANDARD(R.string.dashboard_metric_standard),
+}
+
 @Composable
-private fun RealtimeF0Sparkline(
+private fun AnalysisMetricSection(entries: List<AnalysisHistoryEntry>) {
+    var selectedOrdinal by rememberSaveable { mutableIntStateOf(AnalysisMetric.F0.ordinal) }
+    val selected = AnalysisMetric.entries[selectedOrdinal]
+    val chronological = entries.take(30).asReversed()
+    val values = chronological.mapNotNull { entry ->
+        when (selected) {
+            AnalysisMetric.F0 -> entry.meanF0Hz?.toFloat()
+            AnalysisMetric.NATURALNESS -> entry.naturalnessScore.toFloat()
+            AnalysisMetric.STANDARD -> entry.standardScore.toFloat()
+        }
+    }
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.dashboard_metric_chart),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AnalysisMetric.entries.forEach { metric ->
+                FilterChip(
+                    selected = selected == metric,
+                    onClick = { selectedOrdinal = metric.ordinal },
+                    label = { Text(stringResource(metric.labelRes)) },
+                )
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        if (values.isEmpty()) {
+            Text(
+                text = stringResource(R.string.dashboard_metric_no_data),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            AnalysisMetricChart(
+                values = values,
+                metric = selected,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(168.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun AnalysisMetricChart(
     values: List<Float>,
+    metric: AnalysisMetric,
     modifier: Modifier = Modifier,
 ) {
-    val lineColor = MaterialTheme.colorScheme.onPrimaryContainer
+    val lineColor = MaterialTheme.colorScheme.primary
+    val pointColor = MaterialTheme.colorScheme.secondary
+    val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.48f)
     Canvas(modifier) {
-        if (values.isEmpty()) return@Canvas
-        val minimum = values.minOrNull() ?: return@Canvas
-        val maximum = values.maxOrNull() ?: return@Canvas
+        val minimum = when (metric) {
+            AnalysisMetric.F0 -> (values.minOrNull() ?: 0f) - 10f
+            else -> 0f
+        }
+        val maximum = when (metric) {
+            AnalysisMetric.F0 -> (values.maxOrNull() ?: 1f) + 10f
+            else -> 100f
+        }
         val range = max(maximum - minimum, 1f)
-        val stepX = if (values.size <= 1) 0f else size.width / (values.size - 1)
-        fun point(index: Int): Offset {
-            val fraction = (values[index] - minimum) / range
-            return Offset(
-                x = stepX * index,
-                y = size.height - fraction * size.height,
-            )
-        }
-        if (values.size == 1) {
-            drawCircle(lineColor, radius = 3.dp.toPx(), center = point(0))
-            return@Canvas
-        }
-        for (index in 0 until values.lastIndex) {
+        val stepX = if (values.size == 1) 0f else size.width / (values.size - 1)
+
+        for (line in 0..2) {
+            val y = size.height * line / 2f
             drawLine(
-                color = lineColor,
-                start = point(index),
-                end = point(index + 1),
-                strokeWidth = 2.5.dp.toPx(),
-                cap = StrokeCap.Round,
+                color = gridColor,
+                start = Offset(0f, y),
+                end = Offset(size.width, y),
+                strokeWidth = 1.dp.toPx(),
             )
+        }
+
+        fun point(index: Int): Offset = Offset(
+            x = stepX * index,
+            y = size.height - ((values[index] - minimum) / range) * size.height,
+        )
+
+        if (values.size == 1) {
+            drawCircle(pointColor, radius = 4.dp.toPx(), center = point(0))
+        } else {
+            for (index in 0 until values.lastIndex) {
+                drawLine(
+                    color = lineColor,
+                    start = point(index),
+                    end = point(index + 1),
+                    strokeWidth = 2.8.dp.toPx(),
+                    cap = StrokeCap.Round,
+                )
+            }
+            values.indices.forEach { index ->
+                drawCircle(pointColor, radius = 3.dp.toPx(), center = point(index))
+            }
         }
     }
 }

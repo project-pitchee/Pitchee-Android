@@ -31,6 +31,11 @@
     <string name="dashboard_no_realtime">还没有实时基频记录</string>
     <string name="dashboard_no_valid_f0">记录中暂时没有有效 F0</string>
     <string name="dashboard_latest_f0">最近一次 %1$.0f Hz</string>
+    <string name="dashboard_metric_chart">测评轨迹</string>
+    <string name="dashboard_metric_f0">F0</string>
+    <string name="dashboard_metric_naturalness">自然度</string>
+    <string name="dashboard_metric_standard">标准分</string>
+    <string name="dashboard_metric_no_data">还没有足够的测评数据来绘制轨迹。</string>
     <string name="dashboard_analysis_history">声音分析记录</string>
     <string name="dashboard_no_analysis">完成一次声音分析后，记录会显示在这里。</string>
 

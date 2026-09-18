@@ -31,6 +31,11 @@
     <string name="dashboard_no_realtime">No realtime pitch sessions yet</string>
     <string name="dashboard_no_valid_f0">No valid F0 in the latest session</string>
     <string name="dashboard_latest_f0">Latest: %1$.0f Hz</string>
+    <string name="dashboard_metric_chart">Assessment trend</string>
+    <string name="dashboard_metric_f0">F0</string>
+    <string name="dashboard_metric_naturalness">Naturalness</string>
+    <string name="dashboard_metric_standard">Timbre</string>
+    <string name="dashboard_metric_no_data">Complete more assessments to draw a trend.</string>
     <string name="dashboard_analysis_history">Voice analysis history</string>
     <string name="dashboard_no_analysis">Your analysis results will appear here.</string>
 
