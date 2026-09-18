@@ -75,6 +75,15 @@ import kotlin.math.sqrt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+private val DeepRed = Color(0xFF8E1B2E)
+private val DeepGreen = Color(0xFF1F6F43)
+private val DeepRedContainer = Color(0xFFF4D8DD)
+private val DeepGreenContainer = Color(0xFFD9EBDD)
+private val DeepRedContainerDark = Color(0xFF5A1723)
+private val DeepGreenContainerDark = Color(0xFF133D29)
+private val DeepRedContentDark = Color(0xFFFFD6DC)
+private val DeepGreenContentDark = Color(0xFFB8E6C6)
+
 @Composable
 internal fun ScoreResultContent(
     result: PitcheeResult,
@@ -216,9 +225,9 @@ private fun PassCard(onOpenRules: () -> Unit) {
             "本次没有触发主要短板规则。",
             "No main bottleneck rule was triggered.",
         ),
-        containerColor = if (darkTheme) Color(0xFF123D29) else Color(0xFFDDF6E4),
-        contentColor = if (darkTheme) Color(0xFFA8E6C0) else Color(0xFF116B3A),
-        actionContainerColor = if (darkTheme) Color(0xFF3F9D6B) else Color(0xFF1F6F43),
+        containerColor = if (darkTheme) DeepGreenContainerDark else DeepGreenContainer,
+        contentColor = if (darkTheme) DeepGreenContentDark else DeepGreen,
+        actionContainerColor = DeepGreen,
         actionContentColor = Color.White,
         onOpenRules = onOpenRules,
     )
@@ -506,8 +515,8 @@ private fun ScoreDelta(
     val delta = previousScore?.let { currentScore - it }
     val (arrow, color) = when {
         delta == null -> "—" to MaterialTheme.colorScheme.onSurfaceVariant
-        delta > 0.05 -> "↑" to Color(0xFF257A45)
-        delta < -0.05 -> "↓" to MaterialTheme.colorScheme.error
+        delta > 0.05 -> "↑" to DeepGreen
+        delta < -0.05 -> "↓" to DeepRed
         else -> "→" to MaterialTheme.colorScheme.onSurfaceVariant
     }
     Column(horizontalAlignment = Alignment.End) {
@@ -572,25 +581,16 @@ private fun CommonFormulaSection(languageCode: String) {
 
 @Composable
 private fun IndicatorRow(indicator: ScoreIndicator) {
-    val passContainer = if (isSystemInDarkTheme()) {
-        Color(0xFF23563A)
-    } else {
-        Color(0xFFDCEFDF)
-    }
-    val passContent = if (isSystemInDarkTheme()) {
-        Color(0xFF9FE0B5)
-    } else {
-        Color(0xFF155F35)
-    }
+    val darkTheme = isSystemInDarkTheme()
     val containerColor = if (indicator.passed) {
-        passContainer
+        if (darkTheme) DeepGreenContainerDark else DeepGreenContainer
     } else {
-        MaterialTheme.colorScheme.errorContainer
+        if (darkTheme) DeepRedContainerDark else DeepRedContainer
     }
     val contentColor = if (indicator.passed) {
-        passContent
+        if (darkTheme) DeepGreenContentDark else DeepGreen
     } else {
-        MaterialTheme.colorScheme.onErrorContainer
+        if (darkTheme) DeepRedContentDark else DeepRed
     }
 
     Row(
@@ -647,8 +647,8 @@ private fun IndicatorRow(indicator: ScoreIndicator) {
         }
         val comparisonColor = when {
             delta == null -> MaterialTheme.colorScheme.onSurfaceVariant
-            delta > 0.05 -> Color(0xFF257A45)
-            delta < -0.05 -> MaterialTheme.colorScheme.error
+            delta > 0.05 -> DeepGreen
+            delta < -0.05 -> DeepRed
             else -> MaterialTheme.colorScheme.onSurfaceVariant
         }
         Column(horizontalAlignment = Alignment.End) {
@@ -1033,17 +1033,17 @@ private fun BottleneckCard(
     insight: ScoreInsight,
     onOpenRules: () -> Unit,
 ) {
+    val darkTheme = isSystemInDarkTheme()
     val containerColor = if (insight.ruleState == ScoreRuleState.CAPPED) {
-        MaterialTheme.colorScheme.errorContainer
+        if (darkTheme) DeepRedContainerDark else DeepRedContainer
     } else {
-        MaterialTheme.colorScheme.tertiaryContainer
+        if (darkTheme) DeepGreenContainerDark else DeepGreenContainer
     }
     val contentColor = if (insight.ruleState == ScoreRuleState.CAPPED) {
-        MaterialTheme.colorScheme.onErrorContainer
+        if (darkTheme) DeepRedContentDark else DeepRed
     } else {
-        MaterialTheme.colorScheme.onTertiaryContainer
+        if (darkTheme) DeepGreenContentDark else DeepGreen
     }
-    val darkTheme = isSystemInDarkTheme()
 
     InsightCard(
         label = loc("主要短板", "Main bottleneck"),
@@ -1051,7 +1051,7 @@ private fun BottleneckCard(
         description = insight.bottleneckDescription,
         containerColor = containerColor,
         contentColor = contentColor,
-        actionContainerColor = if (darkTheme) Color(0xFFB64B5D) else Color(0xFF8E1B2E),
+        actionContainerColor = if (insight.ruleState == ScoreRuleState.CAPPED) DeepRed else DeepGreen,
         actionContentColor = Color.White,
         onOpenRules = onOpenRules,
     )

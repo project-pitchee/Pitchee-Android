@@ -12,41 +12,82 @@ internal data class ReadingPassage(
     fun text(languageCode: String): String =
         if (languageCode.startsWith("en")) textEn else textZh
 
-    fun pages(languageCode: String): List<String> =
-        paginate(
+    fun pages(languageCode: String): List<String> {
+        val english = languageCode.startsWith("en")
+        return paginate(
             text = text(languageCode),
-            maxLength = if (languageCode.startsWith("en")) ENGLISH_PAGE_LENGTH else CHINESE_PAGE_LENGTH,
+            maxLength = if (english) ENGLISH_PAGE_LENGTH else CHINESE_PAGE_LENGTH,
+            english = english,
         )
+    }
 
     private companion object {
         const val CHINESE_PAGE_LENGTH = 30
         const val ENGLISH_PAGE_LENGTH = 90
         val sentenceBoundary = Regex("(?<=[。！？!?])\\s*")
 
-        fun paginate(text: String, maxLength: Int): List<String> {
+        fun paginate(
+            text: String,
+            maxLength: Int,
+            english: Boolean,
+        ): List<String> {
             val pages = mutableListOf<String>()
             val current = StringBuilder()
             text.split(sentenceBoundary)
                 .filter { it.isNotBlank() }
                 .forEach { sentence ->
-                    if (current.isNotEmpty() && current.length + sentence.length > maxLength) {
-                        pages += current.toString()
-                        current.clear()
-                    }
-                    if (sentence.length <= maxLength) {
-                        current.append(sentence)
+                    val chunks = if (english && sentence.length > maxLength) {
+                        splitEnglishWords(sentence, maxLength)
                     } else {
-                        sentence.chunked(maxLength).forEach { chunk ->
-                            if (current.isNotEmpty()) {
-                                pages += current.toString()
-                                current.clear()
-                            }
+                        listOf(sentence)
+                    }
+                    chunks.forEach { chunk ->
+                        if (current.isNotEmpty() && current.length + chunk.length > maxLength) {
+                            pages += current.toString()
+                            current.clear()
+                        }
+                        if (chunk.length <= maxLength) {
                             current.append(chunk)
+                        } else {
+                            chunk.chunked(maxLength).forEach { part ->
+                                if (current.isNotEmpty()) {
+                                    pages += current.toString()
+                                    current.clear()
+                                }
+                                current.append(part)
+                            }
                         }
                     }
                 }
             if (current.isNotEmpty()) pages += current.toString()
             return pages.ifEmpty { listOf(text) }
+        }
+
+        fun splitEnglishWords(sentence: String, maxLength: Int): List<String> {
+            val result = mutableListOf<String>()
+            val current = StringBuilder()
+            sentence.trim().split(Regex("\\s+")).forEach { word ->
+                when {
+                    word.length > maxLength -> {
+                        if (current.isNotEmpty()) {
+                            result += current.toString()
+                            current.clear()
+                        }
+                        result += word.chunked(maxLength)
+                    }
+                    current.isEmpty() -> current.append(word)
+                    current.length + 1 + word.length <= maxLength -> {
+                        current.append(' ').append(word)
+                    }
+                    else -> {
+                        result += current.toString()
+                        current.clear()
+                        current.append(word)
+                    }
+                }
+            }
+            if (current.isNotEmpty()) result += current.toString()
+            return result
         }
     }
 }

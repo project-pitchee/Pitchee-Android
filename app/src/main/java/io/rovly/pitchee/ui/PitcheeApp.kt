@@ -65,6 +65,7 @@ import io.rovly.pitchee.R
 import io.rovly.pitchee.data.FeminineTimeline
 import io.rovly.pitchee.data.PitcheeResult
 import io.rovly.pitchee.update.ApkInstaller
+import io.rovly.pitchee.update.GitHubRelease
 import io.rovly.pitchee.update.UpdateUiState
 import io.rovly.pitchee.update.UpdateViewModel
 import java.io.File
@@ -93,6 +94,7 @@ fun PitcheeApp() {
     val updateState by updateViewModel.state.collectAsStateWithLifecycle()
     val autoCheckUpdates by updateViewModel.autoCheck.collectAsStateWithLifecycle()
     var pendingInstallFile by remember { mutableStateOf<File?>(null) }
+    var pendingDownloadRelease by remember { mutableStateOf<GitHubRelease?>(null) }
     val installPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) {
@@ -101,6 +103,21 @@ fun PitcheeApp() {
         if (file != null && ApkInstaller.canInstall(context)) {
             runCatching { ApkInstaller.install(context, file) }
             updateViewModel.markInstallLaunched()
+        }
+        val release = pendingDownloadRelease
+        pendingDownloadRelease = null
+        if (release != null && ApkInstaller.canInstall(context)) {
+            updateViewModel.download(release)
+        }
+    }
+
+    fun startUpdate(release: GitHubRelease) {
+        updateViewModel.hideUpdate()
+        if (ApkInstaller.canInstall(context)) {
+            updateViewModel.download(release)
+        } else {
+            pendingDownloadRelease = release
+            ApkInstaller.requestInstallPermission(context)
         }
     }
     val debugBuild = remember(context) {
@@ -139,7 +156,7 @@ fun PitcheeApp() {
                 }
             },
             confirmButton = {
-                TextButton(onClick = { updateViewModel.download(state.release) }) {
+                TextButton(onClick = { startUpdate(state.release) }) {
                     Text(stringResource(R.string.update_download))
                 }
             },

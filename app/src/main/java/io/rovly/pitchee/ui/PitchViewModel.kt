@@ -27,6 +27,13 @@ data class F0Point(
     val confidence: Float,
 )
 
+data class PitchSessionSummary(
+    val meanF0Hz: Double?,
+    val maleRatio: Float,
+    val femaleRatio: Float,
+    val sampleCount: Int,
+)
+
 data class PitchUiState(
     val running: Boolean = false,
     val preparing: Boolean = false,
@@ -57,6 +64,9 @@ class PitchViewModel(
     private var sessionRecorded = false
     private var sessionF0Sum = 0.0
     private var sessionF0Count = 0
+    private var sessionLowCount = 0
+    private var sessionHighCount = 0
+    private var lastSummary: PitchSessionSummary? = null
     private val mutableState = MutableStateFlow(PitchUiState())
     val state: StateFlow<PitchUiState> = mutableState.asStateFlow()
 
@@ -65,6 +75,9 @@ class PitchViewModel(
         sessionRecorded = false
         sessionF0Sum = 0.0
         sessionF0Count = 0
+        sessionLowCount = 0
+        sessionHighCount = 0
+        lastSummary = null
         mutableState.value = PitchUiState(preparing = true)
         analysisJob = viewModelScope.launch(Dispatchers.Default) {
             var stream: PitcheeRealtimeF0? = null
@@ -82,6 +95,11 @@ class PitchViewModel(
                         if (measuredF0 != null) {
                             sessionF0Sum += measuredF0
                             sessionF0Count++
+                            if (measuredF0 > F0_BOUNDARY_HZ) {
+                                sessionHighCount++
+                            } else {
+                                sessionLowCount++
+                            }
                         }
                         val point = F0Point(
                             timestampSeconds = timestamp,
@@ -117,14 +135,37 @@ class PitchViewModel(
     }
 
     fun stop() {
+        finishSession()
+    }
+
+    fun finishSession(): PitchSessionSummary {
         recordSession()
         analysisJob?.cancel()
         analysisJob = null
         mutableState.update { it.copy(running = false, preparing = false) }
+        return lastSummary ?: PitchSessionSummary(
+            meanF0Hz = null,
+            maleRatio = 0f,
+            femaleRatio = 0f,
+            sampleCount = 0,
+        )
+    }
+
+    fun clearDisplay() {
+        if (!mutableState.value.running && !mutableState.value.preparing) {
+            mutableState.value = PitchUiState()
+        }
     }
 
     private fun recordSession() {
         if (sessionRecorded) return
+        val total = sessionLowCount + sessionHighCount
+        lastSummary = PitchSessionSummary(
+            meanF0Hz = if (sessionF0Count > 0) sessionF0Sum / sessionF0Count else null,
+            maleRatio = if (total > 0) sessionLowCount.toFloat() / total else 0f,
+            femaleRatio = if (total > 0) sessionHighCount.toFloat() / total else 0f,
+            sampleCount = total,
+        )
         if (sessionF0Count > 0) {
             historyStore.addRealtimeF0(
                 RealtimeF0HistoryEntry(
@@ -146,6 +187,7 @@ class PitchViewModel(
     }
 
     companion object {
+        private const val F0_BOUNDARY_HZ = 165f
         private const val READ_SAMPLES = 512
         private const val MAX_POINTS = 480
 

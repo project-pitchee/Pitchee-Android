@@ -63,6 +63,7 @@ internal fun RealtimePitchScreen() {
     val viewModel: PitchViewModel = viewModel(factory = factory)
     val state by viewModel.state.collectAsStateWithLifecycle()
     var permissionDenied by remember { mutableStateOf(false) }
+    var sessionSummary by remember { mutableStateOf<PitchSessionSummary?>(null) }
     val passagePreferences = remember(context) { PassagePreferences(context) }
     var selectedPassageIndex by rememberSaveable(passagePreferences.officialIndex()) {
         mutableIntStateOf(passagePreferences.officialIndex())
@@ -79,8 +80,23 @@ internal fun RealtimePitchScreen() {
         onDispose { viewModel.stop() }
     }
 
+    sessionSummary?.let { summary ->
+        PitchSessionSummaryScreen(
+            summary = summary,
+            onBack = {
+                sessionSummary = null
+                viewModel.clearDisplay()
+            },
+        )
+        return
+    }
+
     fun toggleMonitoring() {
-        if (state.running || state.preparing) {
+        if (state.running) {
+            sessionSummary = viewModel.finishSession()
+            return
+        }
+        if (state.preparing) {
             viewModel.stop()
             return
         }

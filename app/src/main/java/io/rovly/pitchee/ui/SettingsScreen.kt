@@ -1,6 +1,5 @@
 package io.rovly.pitchee.ui
 
-import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -17,6 +16,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -35,7 +35,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.os.LocaleListCompat
 import io.rovly.pitchee.R
 import io.rovly.pitchee.update.UpdateUiState
 
@@ -85,9 +84,7 @@ internal fun SettingsScreen(
             FilterChip(
                 selected = language == "zh",
                 onClick = {
-                    AppCompatDelegate.setApplicationLocales(
-                        LocaleListCompat.forLanguageTags("zh-CN"),
-                    )
+                    AppLanguage.set(context, AppLanguage.LANGUAGE_ZH)
                 },
                 label = { Text(stringResource(R.string.language_chinese)) },
                 modifier = Modifier.weight(1f),
@@ -95,9 +92,7 @@ internal fun SettingsScreen(
             FilterChip(
                 selected = language == "en",
                 onClick = {
-                    AppCompatDelegate.setApplicationLocales(
-                        LocaleListCompat.forLanguageTags("en"),
-                    )
+                    AppLanguage.set(context, AppLanguage.LANGUAGE_EN)
                 },
                 label = { Text(stringResource(R.string.language_english)) },
                 modifier = Modifier.weight(1f),
@@ -210,60 +205,60 @@ internal fun SettingsScreen(
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
         )
-        Spacer(Modifier.height(10.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column {
+        Spacer(Modifier.height(6.dp))
+        ListItem(
+            headlineContent = {
                 Text(
                     text = stringResource(R.string.settings_current_version),
                     style = MaterialTheme.typography.titleSmall,
                 )
+            },
+            supportingContent = {
                 Text(
                     text = versionName,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-            Button(
-                onClick = onCheckUpdates,
-                enabled = updateState !is UpdateUiState.Checking &&
-                    updateState !is UpdateUiState.Downloading,
-            ) {
-                if (updateState is UpdateUiState.Checking) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                    )
-                } else {
-                    Text(stringResource(R.string.settings_check_updates))
+            },
+            trailingContent = {
+                Button(
+                    onClick = onCheckUpdates,
+                    enabled = updateState !is UpdateUiState.Checking &&
+                        updateState !is UpdateUiState.Downloading,
+                ) {
+                    if (updateState is UpdateUiState.Checking) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Text(stringResource(R.string.settings_check_updates))
+                    }
                 }
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
+            },
+        )
+        Spacer(Modifier.height(4.dp))
+        ListItem(
+            headlineContent = {
                 Text(
                     text = stringResource(R.string.settings_auto_updates),
                     style = MaterialTheme.typography.titleSmall,
                 )
+            },
+            supportingContent = {
                 Text(
                     text = stringResource(R.string.settings_auto_updates_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-            Switch(
-                checked = autoCheckUpdates,
-                onCheckedChange = onAutoCheckChange,
-            )
-        }
+            },
+            trailingContent = {
+                Switch(
+                    checked = autoCheckUpdates,
+                    onCheckedChange = onAutoCheckChange,
+                )
+            },
+        )
         when (val state = updateState) {
             is UpdateUiState.UpToDate -> UpdateStatusText(
                 stringResource(R.string.update_up_to_date),

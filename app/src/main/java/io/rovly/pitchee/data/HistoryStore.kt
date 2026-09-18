@@ -50,6 +50,21 @@ class HistoryStore(context: Context) {
         )
     }
 
+    fun removeAnalysis(timestampMillis: Long) {
+        writeArray(
+            KEY_ANALYSES,
+            JSONArray().apply {
+                analyses()
+                    .filterNot { it.timestampMillis == timestampMillis }
+                    .forEach { put(it.toJson()) }
+            },
+        )
+    }
+
+    fun clearRealtimeF0() {
+        preferences.edit().remove(KEY_REALTIME_F0).apply()
+    }
+
     fun addRealtimeF0(entry: RealtimeF0HistoryEntry) {
         val values = realtimeF0().toMutableList()
         values.add(0, entry)

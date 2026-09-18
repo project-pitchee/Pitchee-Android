@@ -15,13 +15,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,6 +41,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -95,11 +100,26 @@ internal fun DashboardScreen(refreshKey: Any? = Unit) {
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
         ) {
             Column(Modifier.padding(20.dp)) {
-                Text(
-                    text = stringResource(R.string.dashboard_average_f0),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(R.string.dashboard_average_f0),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    TextButton(
+                        onClick = {
+                            store.clearRealtimeF0()
+                            data = data.copy(realtimeF0 = emptyList())
+                        },
+                        enabled = data.realtimeF0.isNotEmpty(),
+                    ) {
+                        Text(stringResource(R.string.dashboard_reset))
+                    }
+                }
                 Spacer(Modifier.height(6.dp))
                 Text(
                     text = averageF0?.let { "%.0f Hz".format(it) } ?: "--",
@@ -134,7 +154,17 @@ internal fun DashboardScreen(refreshKey: Any? = Unit) {
             )
         } else {
             data.analyses.take(20).forEachIndexed { index, entry ->
-                AnalysisHistoryRow(entry)
+                AnalysisHistoryRow(
+                    entry = entry,
+                    onDelete = {
+                        store.removeAnalysis(entry.timestampMillis)
+                        data = data.copy(
+                            analyses = data.analyses.filterNot {
+                                it.timestampMillis == entry.timestampMillis
+                            },
+                        )
+                    },
+                )
                 if (index != data.analyses.take(20).lastIndex) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
@@ -372,7 +402,10 @@ private fun nearestPointIndex(
 
 
 @Composable
-private fun AnalysisHistoryRow(entry: AnalysisHistoryEntry) {
+private fun AnalysisHistoryRow(
+    entry: AnalysisHistoryEntry,
+    onDelete: () -> Unit,
+) {
     val locale = LocalConfiguration.current.locales[0]
     val timestamp = remember(entry.timestampMillis, locale) {
         DateFormat.getDateTimeInstance(
@@ -413,5 +446,13 @@ private fun AnalysisHistoryRow(entry: AnalysisHistoryEntry) {
             color = feminineScoreColor(entry.finalScore),
             textAlign = TextAlign.End,
         )
+        Spacer(Modifier.width(4.dp))
+        IconButton(onClick = onDelete) {
+            Icon(
+                painter = painterResource(R.drawable.ic_delete),
+                contentDescription = stringResource(R.string.dashboard_delete_record),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
