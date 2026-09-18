@@ -65,6 +65,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.rovly.pitchee.R
+import io.rovly.pitchee.data.FeminineTimeline
 import io.rovly.pitchee.data.PitcheeResult
 import space.pitchee.core.PitcheePhase
 import kotlinx.coroutines.launch
@@ -230,6 +231,15 @@ private fun RecordAnalysisScreen() {
                             val animateScore = remember(current.scoreAnimationToken) {
                                 viewModel.consumeScoreAnimation(current.scoreAnimationToken)
                             }
+                            val playbackTimeline = remember(
+                                current.result,
+                                current.audio.durationSeconds,
+                            ) {
+                                FeminineTimeline.from(
+                                    result = current.result,
+                                    durationSeconds = current.audio.durationSeconds,
+                                )
+                            }
                             ScreenColumn {
                                 ScoreResultContent(
                                     result = current.result,
@@ -242,6 +252,7 @@ private fun RecordAnalysisScreen() {
                                         audio = current.audio,
                                         f0Windows = current.result.f0.windows,
                                         segmentScores = current.segmentScores,
+                                        metricsTimeline = playbackTimeline,
                                     )
                                 }
                                 Spacer(Modifier.height(12.dp))

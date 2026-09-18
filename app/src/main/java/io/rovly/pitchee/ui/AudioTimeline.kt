@@ -3,7 +3,6 @@ package io.rovly.pitchee.ui
 import android.media.MediaPlayer
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
@@ -52,13 +51,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.rovly.pitchee.R
 import io.rovly.pitchee.data.F0Window
+import io.rovly.pitchee.data.FeminineTimeline
 import io.rovly.pitchee.data.RecordedAudio
 import io.rovly.pitchee.data.SpeechSegmentScore
 import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 private val ScoreColors = listOf(
     Color(0xFFD55362),
@@ -126,6 +128,7 @@ internal fun RecordedAudioTimeline(
     audio: RecordedAudio,
     f0Windows: List<F0Window> = emptyList(),
     segmentScores: List<SpeechSegmentScore> = emptyList(),
+    metricsTimeline: FeminineTimeline? = null,
     modifier: Modifier = Modifier,
 ) {
     val darkTheme = isSystemInDarkTheme()
@@ -316,6 +319,7 @@ internal fun RecordedAudioTimeline(
                         accent = playerAccent,
                         thresholdColor = playerContent.copy(alpha = 0.34f),
                         thresholdLabelColor = playerContent.copy(alpha = 0.38f),
+                        metricsTimeline = metricsTimeline,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -342,6 +346,7 @@ private fun F0Track(
     accent: Color,
     thresholdColor: Color,
     thresholdLabelColor: Color,
+    metricsTimeline: FeminineTimeline?,
     modifier: Modifier = Modifier,
 ) {
     val pink = Color(0xFFFFB6C1)
@@ -360,20 +365,6 @@ private fun F0Track(
     }
     val targetF0 = remember(positionSeconds, smoothF0Path) {
         f0SampleAt(positionSeconds, smoothF0Path)?.hz
-    }
-    val animatedF0 = remember { Animatable(targetF0 ?: 0f) }
-
-    LaunchedEffect(targetF0) {
-        if (targetF0 != null) {
-            animatedF0.animateTo(
-                targetValue = targetF0,
-                animationSpec = spring(
-                    dampingRatio = 0.82f,
-                    stiffness = 260f,
-                    visibilityThreshold = 0.05f,
-                ),
-            )
-        }
     }
 
     BoxWithConstraints(modifier = modifier) {
@@ -484,7 +475,7 @@ private fun F0Track(
         )
 
         if (targetF0 != null) {
-            val hz = animatedF0.value
+            val hz = targetF0
             val color = if (hz > thresholdHz) pink else blue
             val currentY = maxHeight * (1f - hz.coerceIn(0f, maximumHz) / maximumHz)
             val labelY = (currentY + 20.dp).coerceIn(0.dp, maxHeight - 36.dp)
@@ -500,9 +491,36 @@ private fun F0Track(
                 tonalElevation = 0.dp,
             ) {
                 Text(
-                    text = "%.0f".format(hz),
+                    text = "F0 %.0f".format(hz),
                     modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+
+        val playbackMetrics = metricsTimeline?.pointAt(positionSeconds)
+        val markerY = (maxHeight - 136.dp + 30.dp).coerceAtLeast(0.dp)
+        Surface(
+            modifier = Modifier.offset(
+                x = (maxWidth / 2 - 70.dp).coerceAtLeast(0.dp),
+                y = markerY,
+            ),
+            shape = RoundedCornerShape(4.dp),
+            color = Color(0xFF253247),
+            contentColor = Color(0xFFEAF3FF),
+            shadowElevation = 0.dp,
+            tonalElevation = 0.dp,
+        ) {
+            Column(Modifier.padding(horizontal = 7.dp, vertical = 4.dp)) {
+                Text(
+                    text = "S ${playbackMetrics?.vfpScore?.roundToInt() ?: "--"}",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = "N ${playbackMetrics?.naturalnessScore?.roundToInt() ?: "--"}",
+                    style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                 )
             }
@@ -579,37 +597,50 @@ private fun BasicWaveform(
             .fillMaxWidth()
             .height(136.dp),
     ) {
-        val centerY = size.height / 2f
-        val viewportStart = positionSeconds - windowSeconds / 2.0
-        val barSpacing = 3.dp.toPx()
-        val barCount = (size.width / barSpacing).toInt().coerceAtLeast(2)
         val duration = audio.durationSeconds.coerceAtLeast(0.001)
+        val viewportStart = positionSeconds - windowSeconds / 2.0
+        val viewportEnd = viewportStart + windowSeconds
+        val centerY = size.height / 2f
+        val targetBarSpacingPx = 3.dp.toPx()
+        val secondsPerBar = targetBarSpacingPx / size.width * windowSeconds
+        val bucketStep = (
+            secondsPerBar / duration * waveform.lastIndex
+            ).toInt().coerceAtLeast(1)
+        val lastBucket = waveform.lastIndex
+        val firstVisibleBucket = floor(
+            viewportStart / duration * lastBucket
+        ).toInt().coerceIn(0, lastBucket)
+        val lastVisibleBucket = ceil(
+            viewportEnd / duration * lastBucket
+        ).toInt().coerceIn(firstVisibleBucket, lastBucket)
 
-        repeat(barCount) { index ->
-            val fraction = index.toFloat() / (barCount - 1)
-            val time = viewportStart + fraction * windowSeconds
-            val amplitude = if (time in 0.0..duration) {
-                val waveformIndex = (time / duration * waveform.lastIndex)
-                    .roundToInt()
-                    .coerceIn(0, waveform.lastIndex)
-                waveform[waveformIndex].coerceIn(0f, 1f)
+        var index = firstVisibleBucket
+        while (index <= lastVisibleBucket) {
+            val time = if (lastBucket == 0) {
+                0.0
             } else {
-                0f
+                index.toDouble() / lastBucket * duration
             }
-            val halfHeight = amplitude * size.height * 0.43f
-            val x = fraction * size.width
+            val x = ((time - viewportStart) / windowSeconds).toFloat() * size.width
+            val amplitude = waveform[index].coerceIn(0f, 1f)
             val score = segmentScores.firstOrNull { segment ->
                 time >= segment.startSeconds && time < segment.endSeconds
             }?.score
             val barColor = score?.let(::feminineScoreColor) ?: Color(0xFF9CA3AF)
+            val halfHeight = if (score == null) {
+                1.2.dp.toPx()
+            } else {
+                (sqrt(amplitude) * size.height * 0.48f)
+                    .coerceAtLeast(2.5.dp.toPx())
+            }
             drawLine(
-                color = barColor.copy(alpha = 0.88f),
+                color = barColor.copy(alpha = if (score == null) 0.42f else 1f),
                 start = Offset(x, centerY - halfHeight),
                 end = Offset(x, centerY + halfHeight),
                 strokeWidth = 2.dp.toPx(),
                 cap = StrokeCap.Round,
             )
+            index += bucketStep
         }
-
     }
 }
