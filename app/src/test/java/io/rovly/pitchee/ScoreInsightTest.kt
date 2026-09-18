@@ -18,6 +18,28 @@ import org.junit.Test
 
 class ScoreInsightTest {
     @Test
+    fun producesEnglishInsightText() {
+        val result = result(
+            standardScore = 80.0,
+            naturalnessScore = 90.0,
+            meanF0 = 150.0,
+            composite = CompositeScore(
+                baseScore = 70.0,
+                finalScore = 59.0,
+                cap = 59.0,
+                rule = "low_f0_natural_cap",
+                limited = true,
+                boosted = false,
+            ),
+        )
+
+        val insight = ScoreInsight.from(result, "en")
+
+        assertTrue(insight.bottleneckTitle.contains("F0"))
+        assertTrue(insight.bottleneckDescription.contains("165"))
+    }
+
+    @Test
     fun passBoostHasNoMainBottleneck() {
         val result = result(
             standardScore = 80.0,

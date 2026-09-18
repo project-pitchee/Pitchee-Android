@@ -75,6 +75,7 @@ private enum class PitcheeDestination(
     val labelRes: Int,
     val iconRes: Int,
 ) {
+    DASHBOARD(R.string.nav_dashboard, R.drawable.ic_dashboard),
     PITCH(R.string.nav_pitch, R.drawable.ic_pitch_analysis),
     ANALYSIS(R.string.nav_analysis, R.drawable.ic_model_analysis),
     SETTINGS(R.string.nav_settings, R.drawable.ic_settings),
@@ -127,7 +128,7 @@ fun PitcheeApp() {
     when (val state = updateState) {
         is UpdateUiState.Available -> AlertDialog(
             onDismissRequest = updateViewModel::dismissUpdate,
-            title = { Text("发现新版本") },
+            title = { Text(stringResource(R.string.update_found_title)) },
             text = {
                 Column {
                     Text(state.release.displayName)
@@ -139,19 +140,19 @@ fun PitcheeApp() {
             },
             confirmButton = {
                 TextButton(onClick = { updateViewModel.download(state.release) }) {
-                    Text("下载更新")
+                    Text(stringResource(R.string.update_download))
                 }
             },
             dismissButton = {
                 TextButton(onClick = updateViewModel::dismissUpdate) {
-                    Text("稍后")
+                    Text(stringResource(R.string.update_later))
                 }
             },
         )
 
         is UpdateUiState.Downloading -> AlertDialog(
             onDismissRequest = {},
-            title = { Text("正在下载更新") },
+            title = { Text(stringResource(R.string.update_downloading_title)) },
             text = {
                 Column {
                     Text(state.release.displayName)
@@ -208,6 +209,7 @@ fun PitcheeApp() {
                 .padding(innerPadding),
         ) {
             when (destinations[selectedIndex]) {
+                PitcheeDestination.DASHBOARD -> DashboardScreen(refreshKey = selectedIndex)
                 PitcheeDestination.PITCH -> RealtimePitchScreen()
                 PitcheeDestination.ANALYSIS -> RecordAnalysisScreen()
                 PitcheeDestination.SETTINGS -> SettingsScreen(
@@ -352,7 +354,7 @@ private fun RecordAnalysisScreen() {
                                     ),
                                     modifier = Modifier.align(Alignment.CenterHorizontally),
                                 ) {
-                                    Text("重新录音")
+                                    Text(stringResource(R.string.recording_again))
                                 }
                             }
                         }
@@ -374,7 +376,7 @@ private fun RecordAnalysisScreen() {
                             ),
                             modifier = Modifier.align(Alignment.CenterHorizontally),
                         ) {
-                            Text("重新录音")
+                            Text(stringResource(R.string.recording_again))
                         }
                     }
                 } else {
@@ -395,7 +397,7 @@ private fun RecordAnalysisScreen() {
                             ),
                             modifier = Modifier.align(Alignment.CenterHorizontally),
                         ) {
-                            Text("重新录音")
+                            Text(stringResource(R.string.recording_again))
                         }
                     }
                 }
@@ -444,13 +446,16 @@ private fun ScoreRulesPage(
                     ),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                 ) {
-                    Text("返回结果")
+                    Text(loc("返回结果", "Back to result"))
                 }
                 Spacer(Modifier.height(8.dp))
             }
             ScreenHeader(
-                title = "评分规则",
-                subtitle = "结合本次指标查看综合分的计算过程",
+                title = loc("评分规则", "Scoring rules"),
+                subtitle = loc(
+                    "结合本次指标查看综合分的计算过程",
+                    "See how the final score is calculated from the current metrics",
+                ),
             )
             Spacer(Modifier.height(20.dp))
             ScoreRulesContent(

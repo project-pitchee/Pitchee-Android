@@ -48,6 +48,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.rovly.pitchee.R
@@ -262,7 +263,7 @@ internal fun RecordedAudioTimeline(
                             painter = painterResource(
                                 if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play,
                             ),
-                            contentDescription = if (isPlaying) "暂停" else "播放",
+                            contentDescription = stringResource(if (isPlaying) R.string.pause else R.string.play),
                         )
                     }
                     Spacer(Modifier.width(12.dp))
@@ -335,7 +336,7 @@ internal fun RecordedAudioTimeline(
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_play),
-                    contentDescription = "展开并播放",
+                    contentDescription = stringResource(R.string.expand_and_play),
                 )
             }
         }

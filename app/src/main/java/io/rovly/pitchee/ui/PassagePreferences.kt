@@ -23,14 +23,23 @@ internal class PassagePreferences(context: Context) {
 
     fun customText(): String = preferences.getString(KEY_CUSTOM_TEXT, "").orEmpty()
 
-    fun activePassage(officialIndex: Int = officialIndex()): ReadingPassage =
-        when (source()) {
-            PassageSource.OFFICIAL -> readingPassages[officialIndex.coerceIn(readingPassages.indices)]
-            PassageSource.CUSTOM -> ReadingPassage(
-                title = "自定义语料",
-                text = customText().ifBlank { readingPassages[officialIndex()].text },
+    fun activePassage(
+        languageCode: String,
+        officialIndex: Int = officialIndex(),
+    ): ReadingPassage = when (source()) {
+        PassageSource.OFFICIAL -> readingPassages[officialIndex.coerceIn(readingPassages.indices)]
+        PassageSource.CUSTOM -> {
+            val text = customText().ifBlank {
+                readingPassages[officialIndex()].text(languageCode)
+            }
+            ReadingPassage(
+                titleZh = "自定义语料",
+                titleEn = "Custom passage",
+                textZh = text,
+                textEn = text,
             )
         }
+    }
 
     fun setSource(source: PassageSource) {
         preferences.edit().putString(KEY_SOURCE, source.name).apply()

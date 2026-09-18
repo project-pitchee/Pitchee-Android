@@ -2,6 +2,7 @@
 agp = "9.3.2"
 kotlin = "2.2.10"
 coreKtx = "1.19.0"
+appcompat = "1.7.1"
 material = "1.14.0"
 junit = "4.13.2"
 json = "20240303"
@@ -18,6 +19,7 @@ uiTooling = "1.12.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 json = { group = "org.json", name = "json", version.ref = "json" }
 markwon-core = { group = "io.noties.markwon", name = "core", version.ref = "markwon" }

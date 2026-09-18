@@ -1,5 +1,6 @@
 package io.rovly.pitchee.ui
 
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -29,9 +30,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.os.LocaleListCompat
+import io.rovly.pitchee.R
 import io.rovly.pitchee.update.UpdateUiState
 
 @Composable
@@ -42,6 +47,7 @@ internal fun SettingsScreen(
     onCheckUpdates: () -> Unit,
 ) {
     val context = LocalContext.current
+    val languageCode = LocalConfiguration.current.locales[0].language
     val preferences = remember(context) { PassagePreferences(context) }
     val versionName = remember(context) {
         runCatching {
@@ -52,6 +58,7 @@ internal fun SettingsScreen(
     var officialIndex by remember { mutableIntStateOf(preferences.officialIndex()) }
     var customText by remember { mutableStateOf(preferences.customText()) }
     var customSaved by remember { mutableStateOf(false) }
+    val language = if (languageCode.startsWith("en")) "en" else "zh"
 
     Column(
         modifier = Modifier
@@ -60,13 +67,45 @@ internal fun SettingsScreen(
             .padding(horizontal = 20.dp, vertical = 24.dp),
     ) {
         Text(
-            text = "设置",
+            text = stringResource(R.string.settings_title),
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
         )
         Spacer(Modifier.height(24.dp))
         Text(
-            text = "语料",
+            text = stringResource(R.string.settings_language),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            FilterChip(
+                selected = language == "zh",
+                onClick = {
+                    AppCompatDelegate.setApplicationLocales(
+                        LocaleListCompat.forLanguageTags("zh-CN"),
+                    )
+                },
+                label = { Text(stringResource(R.string.language_chinese)) },
+                modifier = Modifier.weight(1f),
+            )
+            FilterChip(
+                selected = language == "en",
+                onClick = {
+                    AppCompatDelegate.setApplicationLocales(
+                        LocaleListCompat.forLanguageTags("en"),
+                    )
+                },
+                label = { Text(stringResource(R.string.language_english)) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Spacer(Modifier.height(24.dp))
+        Text(
+            text = stringResource(R.string.settings_passages),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
         )
@@ -81,7 +120,7 @@ internal fun SettingsScreen(
                     source = PassageSource.OFFICIAL
                     preferences.setSource(source)
                 },
-                label = { Text("官方语料") },
+                label = { Text(stringResource(R.string.passage_source_official)) },
                 modifier = Modifier.weight(1f),
             )
             FilterChip(
@@ -91,7 +130,7 @@ internal fun SettingsScreen(
                     preferences.setSource(source)
                     customSaved = false
                 },
-                label = { Text("自定义语料") },
+                label = { Text(stringResource(R.string.passage_source_custom)) },
                 modifier = Modifier.weight(1f),
             )
         }
@@ -117,12 +156,12 @@ internal fun SettingsScreen(
                     )
                     Column(Modifier.padding(start = 8.dp)) {
                         Text(
-                            text = passage.title,
+                            text = passage.title(languageCode),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            text = passage.text,
+                            text = passage.text(languageCode),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
@@ -138,7 +177,7 @@ internal fun SettingsScreen(
                     customSaved = false
                 },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("自定义语料") },
+                label = { Text(stringResource(R.string.passage_source_custom)) },
                 minLines = 4,
                 maxLines = 10,
             )
@@ -151,12 +190,12 @@ internal fun SettingsScreen(
                 },
                 enabled = customText.trim().isNotEmpty(),
             ) {
-                Text("保存语料")
+                Text(stringResource(R.string.save_passage))
             }
             val savedCustomText = preferences.customText()
             if (customSaved || (savedCustomText.isNotBlank() && customText == savedCustomText)) {
                 Text(
-                    text = "已使用自定义语料",
+                    text = stringResource(R.string.custom_passage_active),
                     modifier = Modifier.padding(top = 8.dp),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
@@ -167,7 +206,7 @@ internal fun SettingsScreen(
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Spacer(Modifier.height(20.dp))
         Text(
-            text = "应用",
+            text = stringResource(R.string.settings_app),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
         )
@@ -178,7 +217,10 @@ internal fun SettingsScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column {
-                Text("当前版本", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    text = stringResource(R.string.settings_current_version),
+                    style = MaterialTheme.typography.titleSmall,
+                )
                 Text(
                     text = versionName,
                     style = MaterialTheme.typography.bodyMedium,
@@ -196,7 +238,7 @@ internal fun SettingsScreen(
                         strokeWidth = 2.dp,
                     )
                 } else {
-                    Text("检查更新")
+                    Text(stringResource(R.string.settings_check_updates))
                 }
             }
         }
@@ -207,9 +249,12 @@ internal fun SettingsScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text("自动检查更新", style = MaterialTheme.typography.titleSmall)
                 Text(
-                    text = "启动应用时检查 GitHub 上的新版本",
+                    text = stringResource(R.string.settings_auto_updates),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    text = stringResource(R.string.settings_auto_updates_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -220,10 +265,18 @@ internal fun SettingsScreen(
             )
         }
         when (val state = updateState) {
-            is UpdateUiState.UpToDate -> UpdateStatusText("当前已是最新版本")
-            is UpdateUiState.Available -> UpdateStatusText("发现新版本 ${state.release.displayName}")
-            is UpdateUiState.Downloading -> UpdateStatusText("正在下载更新")
-            is UpdateUiState.ReadyToInstall -> UpdateStatusText("更新已下载，正在打开安装器")
+            is UpdateUiState.UpToDate -> UpdateStatusText(
+                stringResource(R.string.update_up_to_date),
+            )
+            is UpdateUiState.Available -> UpdateStatusText(
+                stringResource(R.string.update_available, state.release.displayName),
+            )
+            is UpdateUiState.Downloading -> UpdateStatusText(
+                stringResource(R.string.update_downloading),
+            )
+            is UpdateUiState.ReadyToInstall -> UpdateStatusText(
+                stringResource(R.string.update_ready),
+            )
             is UpdateUiState.Error -> UpdateStatusText(
                 text = state.message,
                 isError = true,

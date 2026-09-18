@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -57,6 +58,7 @@ import io.rovly.pitchee.R
 @Composable
 internal fun RealtimePitchScreen() {
     val context = LocalContext.current
+    val languageCode = LocalConfiguration.current.locales[0].language
     val factory = remember { PitchViewModel.factory(context.applicationContext) }
     val viewModel: PitchViewModel = viewModel(factory = factory)
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -176,7 +178,10 @@ internal fun RealtimePitchScreen() {
                 )
                 Spacer(Modifier.height(10.dp))
             }
-            val passage = passagePreferences.activePassage(selectedPassageIndex)
+            val passage = passagePreferences.activePassage(languageCode, selectedPassageIndex)
+            val pages = remember(passage.text(languageCode)) { passage.pages(languageCode) }
+            var pageIndex by rememberSaveable(passage.text(languageCode)) { mutableIntStateOf(0) }
+            val pageText = pages[pageIndex.coerceIn(pages.indices)]
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -184,16 +189,14 @@ internal fun RealtimePitchScreen() {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = passage.text,
+                    text = pageText,
                     modifier = Modifier
                         .weight(1f)
                         .clickable(
-                            enabled = passagePreferences.source() == PassageSource.OFFICIAL,
-                            onClickLabel = "切换语料",
+                            enabled = pages.size > 1,
+                            onClickLabel = stringResource(R.string.next_page),
                         ) {
-                            selectedPassageIndex =
-                                (selectedPassageIndex + 1) % readingPassages.size
-                            passagePreferences.setOfficialIndex(selectedPassageIndex)
+                            pageIndex = (pageIndex + 1) % pages.size
                         },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -391,7 +394,7 @@ private fun PitchChart(
 
         if (averageF0 != null) {
             Text(
-                text = "平均 %.0f Hz".format(animatedAverageF0),
+                text = loc("平均 %.0f Hz", "Avg %.0f Hz").format(animatedAverageF0),
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .offset(y = yDp(animatedAverageF0) - 18.dp)

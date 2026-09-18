@@ -7,7 +7,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.rovly.pitchee.data.PitcheeRepository
+import io.rovly.pitchee.data.HistoryStore
 import io.rovly.pitchee.data.RealtimeF0AudioRecorder
+import io.rovly.pitchee.data.RealtimeF0HistoryEntry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -49,13 +51,20 @@ data class PitchUiState(
 class PitchViewModel(
     private val repository: PitcheeRepository,
     private val recorder: RealtimeF0AudioRecorder,
+    private val historyStore: HistoryStore,
 ) : ViewModel() {
     private var analysisJob: Job? = null
+    private var sessionRecorded = false
+    private var sessionF0Sum = 0.0
+    private var sessionF0Count = 0
     private val mutableState = MutableStateFlow(PitchUiState())
     val state: StateFlow<PitchUiState> = mutableState.asStateFlow()
 
     fun start() {
         if (analysisJob?.isActive == true) return
+        sessionRecorded = false
+        sessionF0Sum = 0.0
+        sessionF0Count = 0
         mutableState.value = PitchUiState(preparing = true)
         analysisJob = viewModelScope.launch(Dispatchers.Default) {
             var stream: PitcheeRealtimeF0? = null
@@ -69,9 +78,14 @@ class PitchViewModel(
                     if (count <= 0) continue
                     val chunk = if (count == buffer.size) buffer.copyOf() else buffer.copyOf(count)
                     stream.process(chunk) { timestamp, f0Hz, confidence, voiced ->
+                        val measuredF0 = f0Hz.takeIf { voiced && it.isFinite() }
+                        if (measuredF0 != null) {
+                            sessionF0Sum += measuredF0
+                            sessionF0Count++
+                        }
                         val point = F0Point(
                             timestampSeconds = timestamp,
-                            f0Hz = f0Hz.takeIf { voiced && it.isFinite() },
+                            f0Hz = measuredF0,
                             confidence = confidence,
                         )
                         mutableState.update { current ->
@@ -95,6 +109,7 @@ class PitchViewModel(
                     }
                 }
             } finally {
+                recordSession()
                 recorder.stop()
                 stream?.close()
             }
@@ -102,12 +117,27 @@ class PitchViewModel(
     }
 
     fun stop() {
+        recordSession()
         analysisJob?.cancel()
         analysisJob = null
         mutableState.update { it.copy(running = false, preparing = false) }
     }
 
+    private fun recordSession() {
+        if (sessionRecorded) return
+        if (sessionF0Count > 0) {
+            historyStore.addRealtimeF0(
+                RealtimeF0HistoryEntry(
+                    timestampMillis = System.currentTimeMillis(),
+                    meanF0Hz = sessionF0Sum / sessionF0Count,
+                ),
+            )
+        }
+        sessionRecorded = true
+    }
+
     override fun onCleared() {
+        recordSession()
         val job = analysisJob
         analysisJob = null
         job?.cancel()
@@ -125,6 +155,7 @@ class PitchViewModel(
                 PitchViewModel(
                     repository = PitcheeRepository(appContext),
                     recorder = RealtimeF0AudioRecorder(appContext),
+                    historyStore = HistoryStore(appContext),
                 )
             }
         }

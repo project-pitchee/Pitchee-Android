@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -321,26 +322,29 @@ internal fun RecordingStage(
 @Composable
 private fun ReadingPassageText(modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val languageCode = LocalConfiguration.current.locales[0].language
     val preferences = remember(context) { PassagePreferences(context) }
     var selectedIndex by rememberSaveable(preferences.officialIndex()) {
         mutableIntStateOf(preferences.officialIndex())
     }
-    val passage = preferences.activePassage(selectedIndex)
+    val passage = preferences.activePassage(languageCode, selectedIndex)
+    val pages = remember(passage.text(languageCode)) { passage.pages(languageCode) }
+    var pageIndex by rememberSaveable(passage.text(languageCode)) { mutableIntStateOf(0) }
+    val pageText = pages[pageIndex.coerceIn(pages.indices)]
     Box(
         modifier = modifier
             .padding(bottom = 6.dp)
             .height(72.dp)
             .clickable(
-                enabled = preferences.source() == PassageSource.OFFICIAL,
-                onClickLabel = "切换语料",
+                enabled = pages.size > 1,
+                onClickLabel = stringResource(R.string.next_page),
             ) {
-                selectedIndex = (selectedIndex + 1) % readingPassages.size
-                preferences.setOfficialIndex(selectedIndex)
+                pageIndex = (pageIndex + 1) % pages.size
             },
         contentAlignment = Alignment.CenterStart,
     ) {
         Text(
-            text = passage.text,
+            text = pageText,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 3,

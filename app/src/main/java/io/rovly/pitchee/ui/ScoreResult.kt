@@ -53,6 +53,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -83,7 +84,8 @@ internal fun ScoreResultContent(
     onOpenRules: () -> Unit = {},
     audioPlayer: @Composable () -> Unit = {},
 ) {
-    val insight = remember(result) { ScoreInsight.from(result) }
+    val languageCode = LocalConfiguration.current.locales[0].language
+    val insight = remember(result, languageCode) { ScoreInsight.from(result, languageCode) }
     val score = result.composite.finalScore.coerceIn(0.0, 100.0)
     AnimatedScoreIndexChart(
         targetScore = score,
@@ -106,6 +108,7 @@ internal fun ScoreResultContent(
         insight = insight,
         previousMetrics = previousMetrics,
         animate = animateScore,
+        languageCode = languageCode,
     )
 }
 
@@ -207,9 +210,12 @@ internal fun ScoreIndexChart(
 private fun PassCard(onOpenRules: () -> Unit) {
     val darkTheme = isSystemInDarkTheme()
     InsightCard(
-        label = "评估结果",
-        title = "你的声音很pass",
-        description = "本次没有触发主要短板规则。",
+        label = loc("评估结果", "Result"),
+        title = loc("你的声音很pass", "Your voice passes"),
+        description = loc(
+            "本次没有触发主要短板规则。",
+            "No main bottleneck rule was triggered.",
+        ),
         containerColor = if (darkTheme) Color(0xFF123D29) else Color(0xFFDDF6E4),
         contentColor = if (darkTheme) Color(0xFFA8E6C0) else Color(0xFF116B3A),
         actionContainerColor = if (darkTheme) Color(0xFF3F9D6B) else Color(0xFF1F6F43),
@@ -254,7 +260,7 @@ private fun InsightCard(
             )
             Spacer(Modifier.height(8.dp))
             ResultActionButton(
-                text = "查看评分细则",
+                text = loc("查看评分细则", "View scoring details"),
                 onClick = onOpenRules,
                 containerColor = actionContainerColor,
                 contentColor = actionContentColor,
@@ -379,7 +385,8 @@ internal fun ScoreRulesContent(
     previousScore: Double?,
     previousMetrics: PreviousMetrics?,
 ) {
-    val insight = remember(result) { ScoreInsight.from(result) }
+    val languageCode = LocalConfiguration.current.locales[0].language
+    val insight = remember(result, languageCode) { ScoreInsight.from(result, languageCode) }
     val currentRule = result.composite.rule
     var otherRulesExpanded by rememberSaveable(currentRule) { mutableStateOf(false) }
     val currentRuleDoc = scoringRuleDocs.firstOrNull { it.key == currentRule }
@@ -392,7 +399,7 @@ internal fun ScoreRulesContent(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "本次综合分",
+                    text = loc("本次综合分", "Final score"),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -409,20 +416,20 @@ internal fun ScoreRulesContent(
         }
         Spacer(Modifier.height(18.dp))
         Text(
-            text = "本次指标",
+            text = loc("本次指标", "Current metrics"),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
         )
         Spacer(Modifier.height(10.dp))
-        scoreIndicators(result, previousMetrics).forEach { indicator ->
+        scoreIndicators(result, previousMetrics, languageCode).forEach { indicator ->
             IndicatorRow(indicator)
             Spacer(Modifier.height(12.dp))
         }
         Spacer(Modifier.height(10.dp))
-        CommonFormulaSection()
+        CommonFormulaSection(languageCode)
         Spacer(Modifier.height(24.dp))
         Text(
-            text = "本次命中规则",
+            text = loc("本次命中规则", "Current scoring rule"),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
         )
@@ -438,6 +445,7 @@ internal fun ScoreRulesContent(
             RuleDetails(
                 rule = rule,
                 isCurrent = true,
+                languageCode = languageCode,
             )
         }
         Spacer(Modifier.height(18.dp))
@@ -450,12 +458,15 @@ internal fun ScoreRulesContent(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "未触发的其他规则",
+                    text = loc("未触发的其他规则", "Other rules"),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = "${otherRuleDocs.size} 条规则",
+                    text = loc(
+                        "${otherRuleDocs.size} 条规则",
+                        "${otherRuleDocs.size} rules",
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -477,7 +488,7 @@ internal fun ScoreRulesContent(
         ) {
             Column {
                 otherRuleDocs.forEachIndexed { index, rule ->
-                    RuleDetails(rule = rule, isCurrent = false)
+                    RuleDetails(rule = rule, isCurrent = false, languageCode = languageCode)
                     if (index != otherRuleDocs.lastIndex) {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
@@ -501,12 +512,13 @@ private fun ScoreDelta(
     }
     Column(horizontalAlignment = Alignment.End) {
         Text(
-            text = "较上次",
+            text = loc("较上次", "vs last"),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            text = delta?.let { "$arrow ${"%.1f".format(abs(it))}" } ?: "首次测评",
+            text = delta?.let { "$arrow ${"%.1f".format(abs(it))}" }
+                ?: loc("首次测评", "First test"),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             color = color,
@@ -515,16 +527,20 @@ private fun ScoreDelta(
 }
 
 @Composable
-private fun CommonFormulaSection() {
+private fun CommonFormulaSection(languageCode: String) {
     Column(Modifier.fillMaxWidth()) {
         Text(
-            text = "基础公式",
+            text = if (languageCode.startsWith("en")) "Base formulas" else "基础公式",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            text = "所有规则以此基础计算",
+            text = if (languageCode.startsWith("en")) {
+                "Every rule starts from these formulas"
+            } else {
+                "所有规则以此基础计算"
+            },
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -532,12 +548,21 @@ private fun CommonFormulaSection() {
         FormulaView(commonScoreFormulas.map(::latexBlock))
         Spacer(Modifier.height(12.dp))
         Text(
-            text = "Standard 代表标准音色分，范围 0 到 100。\n" +
-                "Naturalness 代表自然度分，范围 0 到 100。\n" +
-                "F0 代表平均基频，单位是 Hz。\n" +
-                "三个 _r 变量是归一化分数，范围 0 到 1。\n" +
-                "Base 是封顶或提升之前的综合基础分。\n" +
-                "Final 是最终显示的综合分。",
+            text = if (languageCode.startsWith("en")) {
+                "Standard is the timbre score, 0–100.\n" +
+                    "Naturalness is the naturalness score, 0–100.\n" +
+                    "F0 is mean pitch in Hz.\n" +
+                    "Variables ending in _r are normalized to 0–1.\n" +
+                    "Base is the score before caps or boosts.\n" +
+                    "Final is the displayed composite score."
+            } else {
+                "Standard 代表标准音色分，范围 0 到 100。\n" +
+                    "Naturalness 代表自然度分，范围 0 到 100。\n" +
+                    "F0 代表平均基频，单位是 Hz。\n" +
+                    "三个 _r 变量是归一化分数，范围 0 到 1。\n" +
+                    "Base 是封顶或提升之前的综合基础分。\n" +
+                    "Final 是最终显示的综合分。"
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * 1.35f,
@@ -606,10 +631,19 @@ private fun IndicatorRow(indicator: ScoreIndicator) {
         }
         val delta = indicator.comparison?.let { it.current - it.previous }
         val comparisonText = when {
-            delta == null -> "较上次 —"
-            delta > 0.05 -> "较上次 ↑ ${formatComparison(abs(delta), indicator.comparison.unit)}"
-            delta < -0.05 -> "较上次 ↓ ${formatComparison(abs(delta), indicator.comparison.unit)}"
-            else -> "较上次 → ${formatComparison(0.0, indicator.comparison.unit)}"
+            delta == null -> loc("较上次 —", "vs last —")
+            delta > 0.05 -> loc(
+                "较上次 ↑ ${formatComparison(abs(delta), indicator.comparison.unit)}",
+                "vs last ↑ ${formatComparison(abs(delta), indicator.comparison.unit)}",
+            )
+            delta < -0.05 -> loc(
+                "较上次 ↓ ${formatComparison(abs(delta), indicator.comparison.unit)}",
+                "vs last ↓ ${formatComparison(abs(delta), indicator.comparison.unit)}",
+            )
+            else -> loc(
+                "较上次 → ${formatComparison(0.0, indicator.comparison.unit)}",
+                "vs last → ${formatComparison(0.0, indicator.comparison.unit)}",
+            )
         }
         val comparisonColor = when {
             delta == null -> MaterialTheme.colorScheme.onSurfaceVariant
@@ -653,6 +687,7 @@ private fun formatComparison(value: Double, unit: String): String =
 private fun scoreIndicators(
     result: PitcheeResult,
     previousMetrics: PreviousMetrics?,
+    languageCode: String,
 ): List<ScoreIndicator> {
     val standard = result.vfp.standardScore
     val naturalness = result.naturalness.score
@@ -673,13 +708,13 @@ private fun scoreIndicators(
         "continuous" -> f0 == null || f0 <= 165.0
         else -> false
     }
-    val standardTier = scoreTier(standard, !standardLimited)
-    val naturalnessTier = scoreTier(naturalness, !naturalnessLimited)
+    val standardTier = scoreTier(standard, !standardLimited, languageCode)
+    val naturalnessTier = scoreTier(naturalness, !naturalnessLimited, languageCode)
     val f0Score = f0?.let { ((it - 110.0) / 90.0 * 100.0).coerceIn(0.0, 100.0) } ?: 0.0
-    val f0Tier = scoreTier(f0Score, !f0Limited)
+    val f0Tier = scoreTier(f0Score, !f0Limited, languageCode)
     return listOf(
         ScoreIndicator(
-            label = "标准音色",
+            label = if (languageCode.startsWith("en")) "Timbre" else "标准音色",
             value = "%.1f".format(standard),
             passed = !standardLimited,
             tier = standardTier,
@@ -688,7 +723,7 @@ private fun scoreIndicators(
             },
         ),
         ScoreIndicator(
-            label = "自然度",
+            label = if (languageCode.startsWith("en")) "Naturalness" else "自然度",
             value = "%.1f".format(naturalness),
             passed = !naturalnessLimited,
             tier = naturalnessTier,
@@ -697,8 +732,9 @@ private fun scoreIndicators(
             },
         ),
         ScoreIndicator(
-            label = "平均 F0",
-            value = f0?.let { "%.0f Hz".format(it) } ?: "未检测到",
+            label = if (languageCode.startsWith("en")) "Mean F0" else "平均 F0",
+            value = f0?.let { "%.0f Hz".format(it) }
+                ?: if (languageCode.startsWith("en")) "Not detected" else "未检测到",
             passed = !f0Limited,
             tier = f0Tier,
             comparison = if (f0 != null && previousMetrics?.meanF0Hz != null) {
@@ -710,13 +746,17 @@ private fun scoreIndicators(
     ).sortedBy { it.passed }
 }
 
-private fun scoreTier(score: Double, passed: Boolean): String {
-    if (!passed) return "综分限制项"
+private fun scoreTier(
+    score: Double,
+    passed: Boolean,
+    languageCode: String,
+): String {
+    if (!passed) return if (languageCode.startsWith("en")) "Score limiter" else "综分限制项"
     return when (score.coerceAtLeast(50.0)) {
-        in 50.0..<60.0 -> "好"
-        in 60.0..<70.0 -> "良好"
-        in 70.0..<80.0 -> "较好"
-        else -> "非常好"
+        in 50.0..<60.0 -> if (languageCode.startsWith("en")) "Fair" else "好"
+        in 60.0..<70.0 -> if (languageCode.startsWith("en")) "Good" else "良好"
+        in 70.0..<80.0 -> if (languageCode.startsWith("en")) "Great" else "较好"
+        else -> if (languageCode.startsWith("en")) "Excellent" else "非常好"
     }
 }
 
@@ -724,15 +764,21 @@ private fun scoreTier(score: Double, passed: Boolean): String {
 private fun RuleDetails(
     rule: ScoringRuleDoc,
     isCurrent: Boolean,
+    languageCode: String,
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 14.dp),
     ) {
+        val english = languageCode.startsWith("en")
+        val title = if (english && rule.titleEn.isNotBlank()) rule.titleEn else rule.title
+        val guidance = if (english && rule.guidanceEn.isNotBlank()) rule.guidanceEn else rule.guidance
+        val condition = if (english && rule.conditionEn.isNotBlank()) rule.conditionEn else rule.condition
+        val handling = if (english && rule.handlingEn.isNotBlank()) rule.handlingEn else rule.handling
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = rule.title,
+                text = title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = if (isCurrent) {
@@ -744,7 +790,7 @@ private fun RuleDetails(
             if (isCurrent) {
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = "当前命中",
+                    text = if (languageCode.startsWith("en")) "Current rule" else "当前命中",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -752,24 +798,24 @@ private fun RuleDetails(
         }
         Spacer(Modifier.height(8.dp))
         Text(
-            text = rule.guidance,
+            text = guidance,
             style = MaterialTheme.typography.bodyLarge,
         )
         Spacer(Modifier.height(14.dp))
         Text(
-            text = "触发条件",
+            text = if (languageCode.startsWith("en")) "Condition" else "触发条件",
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            text = rule.condition,
+            text = condition,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(16.dp))
         Text(
-            text = "计算公式",
+            text = if (languageCode.startsWith("en")) "Formula" else "计算公式",
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -777,13 +823,13 @@ private fun RuleDetails(
         FormulaView(rule.formulas.map(::latexBlock))
         Spacer(Modifier.height(16.dp))
         Text(
-            text = "处理结果",
+            text = if (languageCode.startsWith("en")) "Result" else "处理结果",
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            text = rule.handling,
+            text = handling,
             style = MaterialTheme.typography.bodyLarge,
         )
     }
@@ -866,6 +912,10 @@ private data class ScoringRuleDoc(
     val condition: String,
     val formulas: List<String>,
     val handling: String,
+    val titleEn: String = "",
+    val guidanceEn: String = "",
+    val conditionEn: String = "",
+    val handlingEn: String = "",
 )
 
 private val commonScoreFormulas = listOf(
@@ -892,12 +942,17 @@ private val scoringRuleDocs = listOf(
         condition = "未命中下列任何封顶或提升规则",
         formulas = listOf("""Final = Base"""),
         handling = "综合分采用 Base。",
+        titleEn = "Continuous scoring",
+        guidanceEn = "No special limit was triggered. Keep the same pace to watch the trend.",
+        conditionEn = "No cap or boost rule below is triggered",
+        handlingEn = "The final score uses Base.",
     ),
     ScoringRuleDoc(
         key = "pass_boost",
         title = "加分",
         guidance = "三项指标都已经过线。继续用现在舒服的音高和语速朗读，稳定度会更容易保持。",
         condition = "F0 > 165，Naturalness > 80，Standard > 50",
+        titleEn = "Qualified boost",
         formulas = listOf(
             """s_F0 = \frac{F0 - 165}{25}""",
             """s_N = \frac{Naturalness - 80}{20}""",
@@ -907,38 +962,57 @@ private val scoringRuleDocs = listOf(
             """Final = \max(Base, promoted)""",
         ),
         handling = "综合分最高为 100。\n如果 promoted > Base，综合分采用 promoted。",
+        guidanceEn = "All three metrics passed. Keep a comfortable pitch and pace to stay consistent.",
+        conditionEn = "F0 > 165, Naturalness > 80, Standard > 50",
+        handlingEn = "The maximum final score is 100. If promoted > Base, promoted is used.",
     ),
     ScoringRuleDoc(
         key = "high_f0_stylized_cap",
         title = "高基频、低自然度封顶",
         guidance = "音高已经上去了，但自然度还没跟上。下一次先放松语气，不必刻意抬高音调。",
         condition = "F0 > 165，Naturalness < 50",
+        titleEn = "High F0, low naturalness cap",
         formulas = listOf("""Final = \min(Base, 30)"""),
         handling = "综合分最高为 30。\n请尝试自然说话，再提高音高。",
+        guidanceEn = "F0 is high, but naturalness has not caught up. Relax the delivery before raising pitch further.",
+        conditionEn = "F0 > 165, Naturalness < 50",
+        handlingEn = "The maximum final score is 30. Try natural speech first, then raise pitch.",
     ),
     ScoringRuleDoc(
         key = "low_f0_natural_cap",
         title = "低基频封顶",
         guidance = "自然度已经不错，接下来把注意力放在音高上。声音不用抬高，保持舒服就好。",
         condition = "F0 ≤ 165，Naturalness ≥ 50",
+        titleEn = "Low F0 cap",
         formulas = listOf("""Final = \min(Base, 59)"""),
         handling = "综合分最高为 59。\n下一次试着用稍高但仍舒服的音调朗读。",
+        guidanceEn = "Naturalness is already good. Focus on pitch without forcing your voice higher.",
+        conditionEn = "F0 ≤ 165, Naturalness ≥ 50",
+        handlingEn = "The maximum final score is 59. Next time, try a slightly higher but comfortable pitch.",
     ),
     ScoringRuleDoc(
         key = "low_f0_stylized_cap",
         title = "低基频、低自然度",
         guidance = "这次音高和自然度都需要照顾。先放慢一点，完整自然地读完整个句子。",
         condition = "F0 ≤ 165，Naturalness < 50",
+        titleEn = "Low F0 and low naturalness",
         formulas = listOf("""Final = \min(Base, 20)"""),
         handling = "综合分最高为 20。\n先把朗读放松，再逐步提高音高。",
+        guidanceEn = "Both pitch and naturalness need attention. Slow down and finish each sentence naturally.",
+        conditionEn = "F0 ≤ 165, Naturalness < 50",
+        handlingEn = "The maximum final score is 20. Relax the delivery before raising pitch gradually.",
     ),
     ScoringRuleDoc(
         key = "high_f0_male_cap",
         title = "音色分不足",
         guidance = "音高和自然度已经达标，接下来重点练音色。试着让声音更明亮、更轻松。",
         condition = "F0 > 165，Naturalness ≥ 50，Standard < 50",
+        titleEn = "Timbre score cap",
         formulas = listOf("""Final = \min(Base, 59)"""),
         handling = "综合分最高为 59。\n下一次重点观察 Standard 的变化。",
+        guidanceEn = "Pitch and naturalness pass. Focus on a brighter, lighter timbre.",
+        conditionEn = "F0 > 165, Naturalness ≥ 50, Standard < 50",
+        handlingEn = "The maximum final score is 59. Watch how Standard changes next time.",
     ),
     ScoringRuleDoc(
         key = "f0_unavailable",
@@ -947,6 +1021,10 @@ private val scoringRuleDocs = listOf(
         condition = "F0 不可用",
         formulas = listOf("Final = Standard"),
         handling = "综合分直接采用标准音色分 Standard。",
+        titleEn = "F0 unavailable",
+        guidanceEn = "No stable F0 was detected. Try moving closer to the microphone.",
+        conditionEn = "F0 unavailable",
+        handlingEn = "The final score directly uses the timbre score Standard.",
     ),
 )
 
@@ -968,7 +1046,7 @@ private fun BottleneckCard(
     val darkTheme = isSystemInDarkTheme()
 
     InsightCard(
-        label = "主要短板",
+        label = loc("主要短板", "Main bottleneck"),
         title = insight.bottleneckTitle,
         description = insight.bottleneckDescription,
         containerColor = containerColor,
@@ -985,6 +1063,7 @@ private fun MetricsCard(
     insight: ScoreInsight,
     previousMetrics: PreviousMetrics?,
     animate: Boolean,
+    languageCode: String,
 ) {
     val cardColor = MaterialTheme.colorScheme.tertiaryContainer
     val toggleColor = MaterialTheme.colorScheme.tertiary
@@ -1074,7 +1153,7 @@ private fun MetricsCard(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "显示音色/F0/VFP指标",
+                        text = if (languageCode.startsWith("en")) "Timbre / F0 / VFP metrics" else "显示音色/F0/VFP指标",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -1087,7 +1166,7 @@ private fun MetricsCard(
                         ),
                     ) {
                         Text(
-                            text = "对比上次",
+                            text = if (languageCode.startsWith("en")) "Compare" else "对比上次",
                             fontWeight = FontWeight.Bold,
                         )
                     }
@@ -1096,44 +1175,47 @@ private fun MetricsCard(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Spacer(Modifier.height(14.dp))
                     MetricRow(
-                        label = "标准音色",
+                        label = if (languageCode.startsWith("en")) "Timbre" else "标准音色",
                         value = if (comparing) {
                             "%.1f".format(previousStandard)
                         } else {
                             "%.1f".format(currentStandard)
                         },
                         progress = standardProgress,
-                        highlighted = insight.bottleneckTitle.contains("音色"),
+                        highlighted = insight.bottleneckTitle.contains("音色") ||
+                            insight.bottleneckTitle.contains("Timbre", ignoreCase = true),
                         score = standardForColor,
                     )
                     Spacer(Modifier.height(14.dp))
                     MetricRow(
-                        label = "自然度",
+                        label = if (languageCode.startsWith("en")) "Naturalness" else "自然度",
                         value = if (comparing) {
                             "%.1f".format(previousNaturalness)
                         } else {
                             "%.1f".format(currentNaturalness)
                         },
                         progress = naturalnessProgress,
-                        highlighted = insight.bottleneckTitle.contains("自然度"),
+                        highlighted = insight.bottleneckTitle.contains("自然度") ||
+                            insight.bottleneckTitle.contains("naturalness", ignoreCase = true),
                         score = naturalnessForColor,
                     )
                     Spacer(Modifier.height(14.dp))
                     MetricRow(
-                        label = "平均 F0",
+                        label = if (languageCode.startsWith("en")) "Mean F0" else "平均 F0",
                         value = if (comparing) {
-                            previousMetrics?.meanF0Hz?.let { "%.0f Hz".format(it) } ?: "未检测到"
+                            previousMetrics?.meanF0Hz?.let { "%.0f Hz".format(it) } ?: if (languageCode.startsWith("en")) "Not detected" else "未检测到"
                         } else {
-                            currentF0?.let { "%.0f Hz".format(it) } ?: "未检测到"
+                            currentF0?.let { "%.0f Hz".format(it) } ?: if (languageCode.startsWith("en")) "Not detected" else "未检测到"
                         },
                         progress = f0Progress,
                         highlighted = insight.bottleneckTitle.contains("F0") ||
-                            insight.bottleneckTitle.contains("基频"),
+                            insight.bottleneckTitle.contains("基频") ||
+                            insight.bottleneckTitle.contains("pitch", ignoreCase = true),
                         score = f0ForColor,
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "F0 进度条按 110–200 Hz 映射；最终规则以 165 Hz 为关键分界。",
+                        text = if (languageCode.startsWith("en")) "F0 uses a 110–200 Hz display range. The rule threshold is 165 Hz." else "F0 进度条按 110–200 Hz 映射；最终规则以 165 Hz 为关键分界。",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1143,7 +1225,7 @@ private fun MetricsCard(
         if (previousMetrics == null) {
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "没有找到上次的指标。",
+                text = if (languageCode.startsWith("en")) "No previous metrics were found." else "没有找到上次的指标。",
                 modifier = Modifier.padding(start = 8.dp),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.error,
@@ -1182,7 +1264,7 @@ private fun MetricRow(
                         contentColor = color,
                     ) {
                         Text(
-                            text = "最低",
+                            text = loc("最低", "Lowest"),
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,

@@ -9,7 +9,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import io.rovly.pitchee.data.AnalysisHistoryEntry
 import io.rovly.pitchee.data.AudioRecorder
+import io.rovly.pitchee.data.HistoryStore
 import io.rovly.pitchee.data.PitcheeRepository
 import io.rovly.pitchee.data.PitcheeResult
 import io.rovly.pitchee.data.RecordedAudio
@@ -68,6 +70,7 @@ class RecordViewModel(
     private val repository: PitcheeRepository,
     private val recorder: AudioRecorder,
     private val scoreHistory: SharedPreferences,
+    private val historyStore: HistoryStore,
 ) : ViewModel() {
     private var timerJob: Job? = null
     private var retainedAudio: RecordedAudio? = null
@@ -183,6 +186,15 @@ class RecordViewModel(
                     )
                     lastResultScore = result.composite.finalScore
                     lastResultMetrics = currentMetrics
+                    historyStore.addAnalysis(
+                        AnalysisHistoryEntry(
+                            timestampMillis = System.currentTimeMillis(),
+                            finalScore = result.composite.finalScore,
+                            standardScore = currentMetrics.standardScore,
+                            naturalnessScore = currentMetrics.naturalnessScore,
+                            meanF0Hz = currentMetrics.meanF0Hz,
+                        ),
+                    )
                     scoreHistory.edit()
                         .putFloat(KEY_LAST_RESULT_SCORE, result.composite.finalScore.toFloat())
                         .putFloat(KEY_LAST_STANDARD_SCORE, currentMetrics.standardScore.toFloat())
@@ -290,6 +302,7 @@ class RecordViewModel(
                         SCORE_HISTORY_NAME,
                         Context.MODE_PRIVATE,
                     ),
+                    historyStore = HistoryStore(appContext),
                 )
             }
         }

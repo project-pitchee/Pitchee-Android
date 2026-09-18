@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import io.rovly.pitchee.R
 import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
@@ -70,8 +71,8 @@ class UpdateViewModel(
                 onSuccess = { release ->
                     release?.let(UpdateUiState::Available) ?: UpdateUiState.UpToDate
                 },
-                onFailure = { error ->
-                    UpdateUiState.Error(error.message ?: "检查更新失败")
+                onFailure = {
+                    UpdateUiState.Error(appContext.getString(R.string.update_check_failed))
                 },
             )
         }
@@ -97,8 +98,8 @@ class UpdateViewModel(
             }
             mutableState.value = result.fold(
                 onSuccess = { file -> UpdateUiState.ReadyToInstall(release, file) },
-                onFailure = { error ->
-                    UpdateUiState.Error(error.message ?: "更新下载失败")
+                onFailure = {
+                    UpdateUiState.Error(appContext.getString(R.string.update_download_failed))
                 },
             )
         }
