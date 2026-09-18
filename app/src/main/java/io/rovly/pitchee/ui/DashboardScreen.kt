@@ -1,14 +1,20 @@
 package io.rovly.pitchee.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.FilterChip
@@ -27,9 +33,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -39,8 +47,10 @@ import io.rovly.pitchee.data.AnalysisHistoryEntry
 import io.rovly.pitchee.data.HistoryStore
 import io.rovly.pitchee.data.RealtimeF0HistoryEntry
 import java.text.DateFormat
+import java.text.SimpleDateFormat
 import java.util.Date
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 private data class DashboardData(
     val realtimeF0: List<RealtimeF0HistoryEntry> = emptyList(),
@@ -147,12 +157,16 @@ private fun AnalysisMetricSection(entries: List<AnalysisHistoryEntry>) {
     var selectedOrdinal by rememberSaveable { mutableIntStateOf(AnalysisMetric.F0.ordinal) }
     val selected = AnalysisMetric.entries[selectedOrdinal]
     val chronological = entries.take(30).asReversed()
-    val values = chronological.mapNotNull { entry ->
-        when (selected) {
+    val points = chronological.mapNotNull { entry ->
+        val value = when (selected) {
             AnalysisMetric.F0 -> entry.meanF0Hz?.toFloat()
             AnalysisMetric.NATURALNESS -> entry.naturalnessScore.toFloat()
             AnalysisMetric.STANDARD -> entry.standardScore.toFloat()
-        }
+        } ?: return@mapNotNull null
+        AnalysisChartPoint(
+            timestampMillis = entry.timestampMillis,
+            value = value,
+        )
     }
     Column(Modifier.fillMaxWidth()) {
         Text(
@@ -171,7 +185,7 @@ private fun AnalysisMetricSection(entries: List<AnalysisHistoryEntry>) {
             }
         }
         Spacer(Modifier.height(12.dp))
-        if (values.isEmpty()) {
+        if (points.isEmpty()) {
             Text(
                 text = stringResource(R.string.dashboard_metric_no_data),
                 style = MaterialTheme.typography.bodyMedium,
@@ -179,7 +193,7 @@ private fun AnalysisMetricSection(entries: List<AnalysisHistoryEntry>) {
             )
         } else {
             AnalysisMetricChart(
-                values = values,
+                points = points,
                 metric = selected,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -191,58 +205,171 @@ private fun AnalysisMetricSection(entries: List<AnalysisHistoryEntry>) {
 
 @Composable
 private fun AnalysisMetricChart(
-    values: List<Float>,
+    points: List<AnalysisChartPoint>,
     metric: AnalysisMetric,
     modifier: Modifier = Modifier,
 ) {
+    val locale = LocalConfiguration.current.locales[0]
     val lineColor = MaterialTheme.colorScheme.primary
     val pointColor = MaterialTheme.colorScheme.secondary
     val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.48f)
-    Canvas(modifier) {
-        val minimum = when (metric) {
-            AnalysisMetric.F0 -> (values.minOrNull() ?: 0f) - 10f
-            else -> 0f
-        }
-        val maximum = when (metric) {
-            AnalysisMetric.F0 -> (values.maxOrNull() ?: 1f) + 10f
-            else -> 100f
-        }
-        val range = max(maximum - minimum, 1f)
-        val stepX = if (values.size == 1) 0f else size.width / (values.size - 1)
+    val crosshairColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f)
+    val selectedPointColor = MaterialTheme.colorScheme.primary
+    var selectedIndex by remember(points) { mutableStateOf<Int?>(null) }
 
-        for (line in 0..2) {
-            val y = size.height * line / 2f
-            drawLine(
-                color = gridColor,
-                start = Offset(0f, y),
-                end = Offset(size.width, y),
-                strokeWidth = 1.dp.toPx(),
-            )
+    BoxWithConstraints(modifier = modifier) {
+        val xFor: (Int) -> androidx.compose.ui.unit.Dp = { index ->
+            if (points.size <= 1) {
+                maxWidth / 2
+            } else {
+                maxWidth * index / (points.size - 1)
+            }
         }
 
-        fun point(index: Int): Offset = Offset(
-            x = stepX * index,
-            y = size.height - ((values[index] - minimum) / range) * size.height,
-        )
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(points) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        selectedIndex = nearestPointIndex(
+                            x = down.position.x,
+                            width = size.width,
+                            count = points.size,
+                        )
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: break
+                            selectedIndex = nearestPointIndex(
+                                x = change.position.x,
+                                width = size.width,
+                                count = points.size,
+                            )
+                            if (!change.pressed) break
+                        }
+                        selectedIndex = null
+                    }
+                },
+        ) {
+            val values = points.map { it.value }
+            val minimum = when (metric) {
+                AnalysisMetric.F0 -> (values.minOrNull() ?: 0f) - 10f
+                else -> 0f
+            }
+            val maximum = when (metric) {
+                AnalysisMetric.F0 -> (values.maxOrNull() ?: 1f) + 10f
+                else -> 100f
+            }
+            val range = max(maximum - minimum, 1f)
+            val stepX = if (points.size == 1) 0f else size.width / (points.size - 1)
 
-        if (values.size == 1) {
-            drawCircle(pointColor, radius = 4.dp.toPx(), center = point(0))
-        } else {
-            for (index in 0 until values.lastIndex) {
+            for (line in 0..2) {
+                val y = size.height * line / 2f
                 drawLine(
-                    color = lineColor,
-                    start = point(index),
-                    end = point(index + 1),
-                    strokeWidth = 2.8.dp.toPx(),
-                    cap = StrokeCap.Round,
+                    color = gridColor,
+                    start = Offset(0f, y),
+                    end = Offset(size.width, y),
+                    strokeWidth = 1.dp.toPx(),
                 )
             }
-            values.indices.forEach { index ->
-                drawCircle(pointColor, radius = 3.dp.toPx(), center = point(index))
+
+            fun point(index: Int): Offset = Offset(
+                x = stepX * index,
+                y = size.height - ((points[index].value - minimum) / range) * size.height,
+            )
+
+            if (points.size == 1) {
+                drawCircle(pointColor, radius = 4.dp.toPx(), center = point(0))
+            } else {
+                for (index in 0 until points.lastIndex) {
+                    drawLine(
+                        color = lineColor,
+                        start = point(index),
+                        end = point(index + 1),
+                        strokeWidth = 2.8.dp.toPx(),
+                        cap = StrokeCap.Round,
+                    )
+                }
+                points.indices.forEach { index ->
+                    drawCircle(pointColor, radius = 3.dp.toPx(), center = point(index))
+                }
+            }
+
+            selectedIndex?.let { index ->
+                val selectedPoint = point(index)
+                drawLine(
+                    color = crosshairColor,
+                    start = Offset(selectedPoint.x, 0f),
+                    end = Offset(selectedPoint.x, size.height),
+                    strokeWidth = 1.2.dp.toPx(),
+                    pathEffect = PathEffect.dashPathEffect(
+                        floatArrayOf(6.dp.toPx(), 6.dp.toPx()),
+                    ),
+                )
+                drawCircle(
+                    color = selectedPointColor,
+                    radius = 4.5.dp.toPx(),
+                    center = selectedPoint,
+                )
+            }
+        }
+
+        selectedIndex?.let { index ->
+            val point = points[index]
+            val date = remember(point.timestampMillis, locale) {
+                SimpleDateFormat("M/d", locale).format(Date(point.timestampMillis))
+            }
+            val value = when (metric) {
+                AnalysisMetric.F0 -> "%.0f Hz".format(point.value)
+                else -> "%.1f".format(point.value)
+            }
+            val tooltipWidth = 62.dp
+            val tooltipX = (xFor(index) - tooltipWidth / 2)
+                .coerceIn(0.dp, maxWidth - tooltipWidth)
+            Surface(
+                modifier = Modifier
+                    .offset(x = tooltipX, y = 0.dp)
+                    .width(tooltipWidth),
+                shape = MaterialTheme.shapes.small,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                tonalElevation = 3.dp,
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = date,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                    Text(
+                        text = value,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             }
         }
     }
 }
+
+private data class AnalysisChartPoint(
+    val timestampMillis: Long,
+    val value: Float,
+)
+
+private fun nearestPointIndex(
+    x: Float,
+    width: Int,
+    count: Int,
+): Int {
+    if (count <= 1 || width <= 0) return 0
+    return ((x / width) * (count - 1))
+        .roundToInt()
+        .coerceIn(0, count - 1)
+}
+
 
 @Composable
 private fun AnalysisHistoryRow(entry: AnalysisHistoryEntry) {
