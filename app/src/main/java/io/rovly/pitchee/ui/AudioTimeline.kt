@@ -74,6 +74,7 @@ private data class F0Sample(
     val seconds: Double,
     val hz: Float,
     val segmentIndex: Int = 0,
+    val runIndex: Int = 0,
 )
 
 private const val F0_SAMPLE_STEP_SECONDS = 0.004
@@ -463,6 +464,11 @@ private fun F0Track(
             }
 
             samples.zipWithNext().forEach { (previous, current) ->
+                if (previous.segmentIndex != current.segmentIndex ||
+                    previous.runIndex != current.runIndex
+                ) {
+                    return@forEach
+                }
                 drawSegment(
                     start = Offset(xFor(previous.seconds), yFor(previous.hz)),
                     end = Offset(xFor(current.seconds), yFor(current.hz)),
@@ -520,12 +526,14 @@ private fun F0Track(
             }?.score
         val waveformHeight = minOf(136.dp, maxHeight)
         val waveformTop = maxHeight - waveformHeight
-        val minimumMarkerHeight = minOf(32.dp, waveformHeight)
-        val markerHeight = (
-            waveformHeight * (playbackScore?.toFloat() ?: 0f) / 100f
-            ).coerceIn(minimumMarkerHeight, waveformHeight)
+        val markerHeight = minOf(36.dp, waveformHeight)
         val markerWidth = 58.dp
-        val markerY = waveformTop + waveformHeight - markerHeight
+        val scoreProgress = (
+            playbackScore?.toFloat() ?: 0f
+            ).coerceIn(0f, 100f) / 100f
+        val markerCenterY = waveformTop + waveformHeight * (1f - scoreProgress)
+        val markerY = (markerCenterY - markerHeight / 2f)
+            .coerceIn(waveformTop, waveformTop + waveformHeight - markerHeight)
         val markerX = (
             maxWidth / 2 - markerWidth - 12.dp
             ).coerceAtLeast(0.dp)
@@ -570,6 +578,7 @@ private fun smoothF0Samples(
 
     val smoothed = mutableListOf<F0Sample>()
     var runStart = 0
+    var runId = 0
     for (index in 1..samples.size) {
         val runEnded = index == samples.size ||
             samples[index].segmentIndex != samples[index - 1].segmentIndex ||
@@ -578,10 +587,11 @@ private fun smoothF0Samples(
 
         val run = samples.subList(runStart, index)
         if (run.size == 1) {
-            smoothed += run.first()
+            smoothed += run.first().copy(runIndex = runId)
         } else {
+            val currentRunId = runId
             run.forEachIndexed { runIndex, current ->
-                if (runIndex == 0) smoothed += current
+                if (runIndex == 0) smoothed += current.copy(runIndex = currentRunId)
                 if (runIndex == run.lastIndex) return@forEachIndexed
 
                 val previous = run[maxOf(0, runIndex - 1)]
@@ -604,11 +614,13 @@ private fun smoothF0Samples(
                         seconds = current.seconds + (next.seconds - current.seconds) * t,
                         hz = hz.coerceIn(0f, F0_MAXIMUM_HZ),
                         segmentIndex = current.segmentIndex,
+                        runIndex = currentRunId,
                     )
                 }
             }
         }
         runStart = index
+        runId++
     }
     return smoothed
 }
