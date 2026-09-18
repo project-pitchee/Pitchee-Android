@@ -73,6 +73,7 @@ private val ScoreColors = listOf(
 private data class F0Sample(
     val seconds: Double,
     val hz: Float,
+    val segmentIndex: Int = 0,
 )
 
 private const val F0_SAMPLE_STEP_SECONDS = 0.004
@@ -320,6 +321,7 @@ internal fun RecordedAudioTimeline(
                         thresholdColor = playerContent.copy(alpha = 0.34f),
                         thresholdLabelColor = playerContent.copy(alpha = 0.38f),
                         metricsTimeline = metricsTimeline,
+                        segmentScores = segmentScores,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -347,16 +349,27 @@ private fun F0Track(
     thresholdColor: Color,
     thresholdLabelColor: Color,
     metricsTimeline: FeminineTimeline?,
+    segmentScores: List<SpeechSegmentScore>,
     modifier: Modifier = Modifier,
 ) {
     val pink = Color(0xFFFFB6C1)
     val blue = Color(0xFF6495ED)
-    val allF0Samples = remember(f0Windows) {
+    val allF0Samples = remember(f0Windows, segmentScores) {
         f0Windows.mapNotNull { window ->
             val hz = window.f0Hz?.toFloat() ?: return@mapNotNull null
+            val seconds = (window.startSeconds + window.endSeconds) / 2.0
+            val segmentIndex = if (segmentScores.isEmpty()) {
+                0
+            } else {
+                segmentScores.indexOfFirst { segment ->
+                    seconds >= segment.startSeconds && seconds < segment.endSeconds
+                }
+            }
+            if (segmentIndex < 0) return@mapNotNull null
             F0Sample(
-                seconds = (window.startSeconds + window.endSeconds) / 2.0,
+                seconds = seconds,
                 hz = hz,
+                segmentIndex = segmentIndex,
             )
         }.sortedBy { it.seconds }
     }
@@ -500,29 +513,49 @@ private fun F0Track(
         }
 
         val playbackMetrics = metricsTimeline?.pointAt(positionSeconds)
-        val markerY = (maxHeight - 136.dp + 30.dp).coerceAtLeast(0.dp)
+        val playbackScore = playbackMetrics?.score
+            ?: segmentScores.firstOrNull { segment ->
+                positionSeconds >= segment.startSeconds &&
+                    positionSeconds < segment.endSeconds
+            }?.score
+        val waveformHeight = minOf(136.dp, maxHeight)
+        val waveformTop = maxHeight - waveformHeight
+        val minimumMarkerHeight = minOf(32.dp, waveformHeight)
+        val markerHeight = (
+            waveformHeight * (playbackScore?.toFloat() ?: 0f) / 100f
+            ).coerceIn(minimumMarkerHeight, waveformHeight)
+        val markerWidth = 58.dp
+        val markerY = waveformTop + waveformHeight - markerHeight
+        val markerX = (
+            maxWidth / 2 - markerWidth - 12.dp
+            ).coerceAtLeast(0.dp)
         Surface(
-            modifier = Modifier.offset(
-                x = (maxWidth / 2 - 70.dp).coerceAtLeast(0.dp),
-                y = markerY,
-            ),
+            modifier = Modifier
+                .offset(x = markerX, y = markerY)
+                .width(markerWidth)
+                .height(markerHeight),
             shape = RoundedCornerShape(4.dp),
             color = Color(0xFF253247),
             contentColor = Color(0xFFEAF3FF),
             shadowElevation = 0.dp,
             tonalElevation = 0.dp,
         ) {
-            Column(Modifier.padding(horizontal = 7.dp, vertical = 4.dp)) {
-                Text(
-                    text = "S ${playbackMetrics?.vfpScore?.roundToInt() ?: "--"}",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    text = "N ${playbackMetrics?.naturalnessScore?.roundToInt() ?: "--"}",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                )
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column {
+                    Text(
+                        text = "S ${playbackMetrics?.vfpScore?.roundToInt() ?: "--"}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "N ${playbackMetrics?.naturalnessScore?.roundToInt() ?: "--"}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             }
         }
     }
@@ -539,6 +572,7 @@ private fun smoothF0Samples(
     var runStart = 0
     for (index in 1..samples.size) {
         val runEnded = index == samples.size ||
+            samples[index].segmentIndex != samples[index - 1].segmentIndex ||
             samples[index].seconds - samples[index - 1].seconds > maximumGapSeconds
         if (!runEnded) continue
 
@@ -569,6 +603,7 @@ private fun smoothF0Samples(
                     smoothed += F0Sample(
                         seconds = current.seconds + (next.seconds - current.seconds) * t,
                         hz = hz.coerceIn(0f, F0_MAXIMUM_HZ),
+                        segmentIndex = current.segmentIndex,
                     )
                 }
             }
