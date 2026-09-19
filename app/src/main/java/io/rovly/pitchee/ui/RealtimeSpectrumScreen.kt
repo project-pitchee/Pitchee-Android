@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -14,6 +15,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -185,38 +187,70 @@ private fun SpectrumControls(
     onRewind: () -> Unit,
 ) {
     val showToolbar = mode != SpectrumMode.IDLE
-    AnimatedContent(
-        targetState = showToolbar,
-        transitionSpec = {
-            val animation = spring<Float>(dampingRatio = 0.78f, stiffness = 320f)
-            scaleIn(animation, initialScale = 0.72f) togetherWith
-                scaleOut(animation, targetScale = 0.72f)
-        },
-        label = "spectrum-controls",
-    ) { expanded ->
-        if (expanded) {
-            SpectrumToolbar(
-                mode = mode,
-                onToggle = onToggle,
-                onRewind = onRewind,
-            )
+    val containerColor by animateColorAsState(
+        targetValue = if (showToolbar) {
+            MaterialTheme.colorScheme.surfaceContainerHigh
         } else {
-            FilledIconButton(
-                onClick = onToggle,
-                modifier = Modifier.size(72.dp),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_play),
-                    contentDescription = stringResource(R.string.spectrum_start_monitoring),
-                    modifier = Modifier.size(30.dp),
+            MaterialTheme.colorScheme.primary
+        },
+        animationSpec = spring(dampingRatio = 0.78f, stiffness = 280f),
+        label = "spectrum-controls-color",
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (showToolbar) {
+            MaterialTheme.colorScheme.onSurface
+        } else {
+            MaterialTheme.colorScheme.onPrimary
+        },
+        animationSpec = spring(dampingRatio = 0.78f, stiffness = 280f),
+        label = "spectrum-controls-content",
+    )
+
+    Surface(
+        modifier = Modifier.animateContentSize(
+            animationSpec = spring(dampingRatio = 0.78f, stiffness = 280f),
+        ),
+        shape = CircleShape,
+        color = containerColor,
+        contentColor = contentColor,
+        tonalElevation = 3.dp,
+        shadowElevation = 5.dp,
+    ) {
+        AnimatedContent(
+            targetState = showToolbar,
+            transitionSpec = {
+                val animation = spring<Float>(dampingRatio = 0.78f, stiffness = 320f)
+                scaleIn(animation, initialScale = 0.72f) togetherWith
+                    scaleOut(animation, targetScale = 0.72f)
+            },
+            label = "spectrum-controls",
+        ) { expanded ->
+            if (expanded) {
+                SpectrumToolbarContent(
+                    mode = mode,
+                    onToggle = onToggle,
+                    onRewind = onRewind,
                 )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clickable(onClick = onToggle),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_play),
+                        contentDescription = stringResource(R.string.spectrum_start_monitoring),
+                        modifier = Modifier.size(30.dp),
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun SpectrumToolbar(
+private fun SpectrumToolbarContent(
     mode: SpectrumMode,
     onToggle: () -> Unit,
     onRewind: () -> Unit,
@@ -224,62 +258,51 @@ private fun SpectrumToolbar(
     val resumeAnalysis = mode == SpectrumMode.REPLAYING ||
         mode == SpectrumMode.ANALYSIS_PAUSED
     val centerIcon = if (resumeAnalysis) R.drawable.ic_play else R.drawable.ic_pause
-    Surface(
-        modifier = Modifier.animateContentSize(
-            animationSpec = spring(dampingRatio = 0.78f, stiffness = 280f),
-        ),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        tonalElevation = 3.dp,
-        shadowElevation = 5.dp,
+    Row(
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ControlIconButton(
-                iconRes = R.drawable.ic_rewind,
-                contentDescription = stringResource(R.string.spectrum_rewind_5),
-                onClick = onRewind,
-            )
-            AnimatedContent(
-                targetState = if (mode == SpectrumMode.PREPARING) null else centerIcon,
-                transitionSpec = {
-                    scaleIn(
-                        spring(dampingRatio = 0.72f, stiffness = 360f),
-                        initialScale = 0.68f,
-                    ) togetherWith scaleOut(
-                        spring(dampingRatio = 0.72f, stiffness = 360f),
-                        targetScale = 0.68f,
+        ControlIconButton(
+            iconRes = R.drawable.ic_rewind,
+            contentDescription = stringResource(R.string.spectrum_rewind_5),
+            onClick = onRewind,
+        )
+        AnimatedContent(
+            targetState = if (mode == SpectrumMode.PREPARING) null else centerIcon,
+            transitionSpec = {
+                scaleIn(
+                    spring(dampingRatio = 0.72f, stiffness = 360f),
+                    initialScale = 0.68f,
+                ) togetherWith scaleOut(
+                    spring(dampingRatio = 0.72f, stiffness = 360f),
+                    targetScale = 0.68f,
+                )
+            },
+            label = "spectrum-center-icon",
+        ) { icon ->
+            FilledIconButton(
+                onClick = onToggle,
+                enabled = mode != SpectrumMode.PREPARING,
+                modifier = Modifier.size(48.dp),
+            ) {
+                if (icon == null) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.5.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
                     )
-                },
-                label = "spectrum-center-icon",
-            ) { icon ->
-                FilledIconButton(
-                    onClick = onToggle,
-                    enabled = mode != SpectrumMode.PREPARING,
-                    modifier = Modifier.size(48.dp),
-                ) {
-                    if (icon == null) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(22.dp),
-                            strokeWidth = 2.5.dp,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                        )
-                    } else {
-                        Icon(
-                            painter = painterResource(icon),
-                            contentDescription = stringResource(
-                                if (resumeAnalysis) {
-                                    R.string.spectrum_resume_analysis
-                                } else {
-                                    R.string.spectrum_pause
-                                },
-                            ),
-                        )
-                    }
+                } else {
+                    Icon(
+                        painter = painterResource(icon),
+                        contentDescription = stringResource(
+                            if (resumeAnalysis) {
+                                R.string.spectrum_resume_analysis
+                            } else {
+                                R.string.spectrum_pause
+                            },
+                        ),
+                    )
                 }
             }
         }
