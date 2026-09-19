@@ -42,6 +42,7 @@
     <string name="dashboard_metric_standard">标准分</string>
     <string name="dashboard_metric_no_data">还没有足够的测评数据来绘制轨迹。</string>
     <string name="dashboard_reset">重置</string>
+    <string name="dashboard_delete">删除</string>
     <string name="dashboard_delete_record">删除这条记录</string>
     <string name="dashboard_pin_record">置顶</string>
     <string name="dashboard_unpin_record">取消置顶</string>

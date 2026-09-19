@@ -42,6 +42,7 @@
     <string name="dashboard_metric_standard">Timbre</string>
     <string name="dashboard_metric_no_data">Complete more assessments to draw a trend.</string>
     <string name="dashboard_reset">Reset</string>
+    <string name="dashboard_delete">Delete</string>
     <string name="dashboard_delete_record">Delete this record</string>
     <string name="dashboard_pin_record">Pin</string>
     <string name="dashboard_unpin_record">Unpin</string>

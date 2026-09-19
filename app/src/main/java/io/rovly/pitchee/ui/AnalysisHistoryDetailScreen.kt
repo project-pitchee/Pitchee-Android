@@ -42,7 +42,7 @@ private sealed interface HistoryDetailState {
     data object Loading : HistoryDetailState
     data class Loaded(
         val result: io.rovly.pitchee.data.PitcheeResult,
-        val audio: RecordedAudio,
+        val audio: RecordedAudio?,
     ) : HistoryDetailState
     data class Error(val message: String) : HistoryDetailState
 }
@@ -68,12 +68,15 @@ internal fun AnalysisHistoryDetailScreen(
         state = runCatching {
             val result = store.analysisResult(entry)
                 ?: error("找不到这次分析的完整结果")
-            val audioFile = store.analysisAudioFile(entry)
-                ?: error("找不到这次分析的原始音频")
-            val pcm = repository.decode(Uri.fromFile(audioFile))
+            val audio = store.analysisAudioFile(entry)?.let { audioFile ->
+                runCatching {
+                    val pcm = repository.decode(Uri.fromFile(audioFile))
+                    RecordedAudio.from(audioFile, pcm)
+                }.getOrNull()
+            }
             HistoryDetailState.Loaded(
                 result = result,
-                audio = RecordedAudio.from(audioFile, pcm),
+                audio = audio,
             )
         }.getOrElse { error ->
             HistoryDetailState.Error(error.message ?: "无法打开这次分析")
@@ -153,12 +156,12 @@ internal fun AnalysisHistoryDetailScreen(
 @Composable
 private fun HistoryResultView(
     result: io.rovly.pitchee.data.PitcheeResult,
-    audio: RecordedAudio,
+    audio: RecordedAudio?,
     onBack: () -> Unit,
     onOpenRules: () -> Unit,
 ) {
-    val timeline = remember(result, audio.durationSeconds) {
-        FeminineTimeline.from(result, audio.durationSeconds)
+    val timeline = remember(result, audio?.durationSeconds) {
+        audio?.let { FeminineTimeline.from(result, it.durationSeconds) }
     }
     val segmentScores = remember(result) { scoreSpeechSegments(result) }
     Column(
@@ -177,14 +180,17 @@ private fun HistoryResultView(
             previousMetrics = null,
             animateScore = false,
             onOpenRules = onOpenRules,
-        ) {
-            RecordedAudioTimeline(
-                audio = audio,
-                f0Windows = result.f0.windows,
-                segmentScores = segmentScores,
-                metricsTimeline = timeline,
-            )
-        }
+            audioPlayer = audio?.let { recordedAudio ->
+                {
+                    RecordedAudioTimeline(
+                        audio = recordedAudio,
+                        f0Windows = result.f0.windows,
+                        segmentScores = segmentScores,
+                        metricsTimeline = timeline,
+                    )
+                }
+            },
+        )
     }
 }
 

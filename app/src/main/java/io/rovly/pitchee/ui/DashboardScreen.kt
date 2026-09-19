@@ -3,7 +3,6 @@ package io.rovly.pitchee.ui
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -20,13 +19,13 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -47,8 +46,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -342,15 +343,14 @@ private fun AnalysisMetricChart(
             if (points.size == 1) {
                 drawCircle(pointColor, radius = 4.dp.toPx(), center = point(0))
             } else {
-                for (index in 0 until points.lastIndex) {
-                    drawLine(
-                        color = lineColor,
-                        start = point(index),
-                        end = point(index + 1),
-                        strokeWidth = 2.8.dp.toPx(),
+                drawPath(
+                    path = smoothChartPath(points.indices.map(::point)),
+                    color = lineColor,
+                    style = Stroke(
+                        width = 2.8.dp.toPx(),
                         cap = StrokeCap.Round,
-                    )
-                }
+                    ),
+                )
                 points.indices.forEach { index ->
                     drawCircle(pointColor, radius = 3.dp.toPx(), center = point(index))
                 }
@@ -420,6 +420,27 @@ private data class AnalysisChartPoint(
     val value: Float,
 )
 
+private fun smoothChartPath(points: List<Offset>): Path = Path().apply {
+    if (points.isEmpty()) return@apply
+    moveTo(points.first().x, points.first().y)
+    if (points.size == 1) return@apply
+
+    for (index in 0 until points.lastIndex) {
+        val previous = points[(index - 1).coerceAtLeast(0)]
+        val current = points[index]
+        val next = points[index + 1]
+        val afterNext = points[(index + 2).coerceAtMost(points.lastIndex)]
+        cubicTo(
+            current.x + (next.x - previous.x) / 6f,
+            current.y + (next.y - previous.y) / 6f,
+            next.x - (afterNext.x - current.x) / 6f,
+            next.y - (afterNext.y - current.y) / 6f,
+            next.x,
+            next.y,
+        )
+    }
+}
+
 private fun nearestPointIndex(
     x: Float,
     width: Int,
@@ -440,7 +461,7 @@ private fun AnalysisHistoryRow(
     onPin: () -> Unit,
 ) {
     val density = LocalDensity.current
-    val maxRevealPx = with(density) { 96.dp.toPx() }
+    val maxRevealPx = with(density) { 132.dp.toPx() }
     var offsetX by remember(entry.timestampMillis) { mutableFloatStateOf(0f) }
     val scope = rememberCoroutineScope()
 
@@ -461,44 +482,34 @@ private fun AnalysisHistoryRow(
             .clip(RoundedCornerShape(12.dp)),
     ) {
         Row(
-            modifier = Modifier.matchParentSize(),
-            horizontalArrangement = Arrangement.End,
+            modifier = Modifier
+                .matchParentSize()
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
         ) {
-            IconButton(
+            HistorySwipeAction(
+                label = stringResource(
+                    if (entry.pinned) R.string.dashboard_unpin_record
+                    else R.string.dashboard_pin_record,
+                ),
+                iconRes = R.drawable.ic_pin,
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 onClick = {
                     onPin()
                     settle()
                 },
-                modifier = Modifier
-                    .width(48.dp)
-                    .fillMaxHeight()
-                    .background(MaterialTheme.colorScheme.primaryContainer),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_pin),
-                    contentDescription = stringResource(
-                        if (entry.pinned) R.string.dashboard_unpin_record
-                        else R.string.dashboard_pin_record,
-                    ),
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-            }
-            IconButton(
+            )
+            HistorySwipeAction(
+                label = stringResource(R.string.dashboard_delete),
+                iconRes = R.drawable.ic_delete,
+                containerColor = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.onErrorContainer,
                 onClick = {
                     onDelete()
                     settle()
                 },
-                modifier = Modifier
-                    .width(48.dp)
-                    .fillMaxHeight()
-                    .background(MaterialTheme.colorScheme.errorContainer),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_delete),
-                    contentDescription = stringResource(R.string.dashboard_delete_record),
-                    tint = MaterialTheme.colorScheme.onErrorContainer,
-                )
-            }
+            )
         }
         Surface(
             modifier = Modifier
@@ -521,6 +532,43 @@ private fun AnalysisHistoryRow(
             color = MaterialTheme.colorScheme.background,
         ) {
             AnalysisHistoryContent(entry)
+        }
+    }
+}
+
+@Composable
+private fun HistorySwipeAction(
+    label: String,
+    iconRes: Int,
+    containerColor: Color,
+    contentColor: Color,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .width(60.dp)
+            .fillMaxHeight()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = containerColor,
+        contentColor = contentColor,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+            )
         }
     }
 }

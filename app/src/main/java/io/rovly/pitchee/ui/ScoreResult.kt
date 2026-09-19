@@ -91,7 +91,7 @@ internal fun ScoreResultContent(
     previousMetrics: PreviousMetrics? = null,
     animateScore: Boolean = true,
     onOpenRules: () -> Unit = {},
-    audioPlayer: @Composable () -> Unit = {},
+    audioPlayer: (@Composable () -> Unit)? = null,
 ) {
     val languageCode = LocalConfiguration.current.locales[0].language
     val insight = remember(result, languageCode) { ScoreInsight.from(result, languageCode) }
@@ -102,9 +102,11 @@ internal fun ScoreResultContent(
         animate = animateScore,
         modifier = Modifier.fillMaxWidth(),
     )
-    Spacer(Modifier.height(18.dp))
-    audioPlayer()
-    Spacer(Modifier.height(12.dp))
+    audioPlayer?.let {
+        Spacer(Modifier.height(18.dp))
+        it()
+        Spacer(Modifier.height(12.dp))
+    }
     if (insight.hasBottleneck) {
         BottleneckCard(insight, onOpenRules)
         Spacer(Modifier.height(12.dp))
@@ -1034,12 +1036,12 @@ private fun BottleneckCard(
     onOpenRules: () -> Unit,
 ) {
     val darkTheme = isSystemInDarkTheme()
-    val containerColor = if (insight.ruleState == ScoreRuleState.CAPPED) {
+    val containerColor = if (insight.hasBottleneck) {
         if (darkTheme) DeepRedContainerDark else DeepRedContainer
     } else {
         if (darkTheme) DeepGreenContainerDark else DeepGreenContainer
     }
-    val contentColor = if (insight.ruleState == ScoreRuleState.CAPPED) {
+    val contentColor = if (insight.hasBottleneck) {
         if (darkTheme) DeepRedContentDark else DeepRed
     } else {
         if (darkTheme) DeepGreenContentDark else DeepGreen
@@ -1051,7 +1053,7 @@ private fun BottleneckCard(
         description = insight.bottleneckDescription,
         containerColor = containerColor,
         contentColor = contentColor,
-        actionContainerColor = if (insight.ruleState == ScoreRuleState.CAPPED) DeepRed else DeepGreen,
+        actionContainerColor = if (insight.hasBottleneck) DeepRed else DeepGreen,
         actionContentColor = Color.White,
         onOpenRules = onOpenRules,
     )
