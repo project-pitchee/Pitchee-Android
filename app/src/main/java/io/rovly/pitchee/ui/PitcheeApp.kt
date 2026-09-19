@@ -78,6 +78,7 @@ private enum class PitcheeDestination(
 ) {
     DASHBOARD(R.string.nav_dashboard, R.drawable.ic_dashboard),
     PITCH(R.string.nav_pitch, R.drawable.ic_pitch_analysis),
+    SPECTRUM(R.string.nav_spectrum, R.drawable.ic_spectrum),
     ANALYSIS(R.string.nav_analysis, R.drawable.ic_model_analysis),
     SETTINGS(R.string.nav_settings, R.drawable.ic_settings),
     SCORE_RULES(R.string.nav_score_test, R.drawable.ic_model_analysis),
@@ -234,6 +235,7 @@ fun PitcheeApp() {
                     scrollPosition = dashboardScrollPosition,
                 )
                 PitcheeDestination.PITCH -> RealtimePitchScreen()
+                PitcheeDestination.SPECTRUM -> RealtimeSpectrumScreen()
                 PitcheeDestination.ANALYSIS -> RecordAnalysisScreen()
                 PitcheeDestination.SETTINGS -> SettingsScreen(
                     updateState = updateState,

@@ -3,7 +3,7 @@
 ## 1. 集成基线
 
 - 上游仓库：`https://github.com/project-pitchee/Pitchee-core`
-- 集成提交：`e3b77aa776ffb57f4414161fd10ebfb487535470`
+- 集成提交：`4e571f45336371b3ddde5a051621005e84562d46`
 - 上游版本：PitcheeCore `0.1.0`
 - 模型版本：`2026-09`
 - ONNX Runtime：Android `1.24.2`
@@ -12,12 +12,13 @@
 - 最低 Android API：24
 - 当前打包 ABI：`arm64-v8a`、`x86_64`
 
-上游源码和模型被放在 `third_party/Pitchee-core/`。当前集成为 `e3b77aa`：
+上游源码和模型被放在 `third_party/Pitchee-core/`。当前集成为 `4e571f4`：
 - `399fe8b` 将高 F0、低自然度封顶从 45 降到 30。
 - `2644fe9` 改为直接使用原生 VAD 时间轴窗口，短语音不再补零。
 - `b4d642a` 让自然度窗口与 VFP 窗口一一对应，并更新 ECAPA 模型。
 - `e9bdd3c` 增加复用 SwiftF0 session 的实时 F0 流式接口。
 - `e3b77aa` 将 F0 时间轴窗口从 `0.1` 秒加密到 `0.05` 秒，并增加三指标便捷评分函数。
+- `4e571f4` 增加独立的实时 STFT 频谱流、频率汇总指标和 Android JNI 接入。
 旧 phase callback 和详细 progress callback 均保持兼容。上游项目没有 Git tag，
 因此提交号是当前唯一可复现的版本标识。
 
@@ -123,6 +124,18 @@ stream.process(floatSamples16kMono) { timestamp, f0Hz, confidence, voiced ->
     // timestamp 单位为秒；voiced=false 时 f0Hz 不应展示
 }
 stream.close()
+```
+
+实时频谱流独立于 analyzer，直接接收 16 kHz 单声道 Float32 PCM：
+
+```kotlin
+val spectrum = PitcheeSpectrum.create()
+spectrum.process(floatSamples16kMono) {
+        timestamp, magnitudes, firstBinIndex, binHz, peakHz, centroidHz, rolloffHz, flatness,
+    ->
+    // magnitudes 只在回调期间有效，需要异步使用时必须复制
+}
+spectrum.close()
 ```
 
 返回类型为 `PitcheeResult`，包含：

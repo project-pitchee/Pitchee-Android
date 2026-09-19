@@ -31,6 +31,12 @@ struct F0FrameBridge {
     jmethodID method;
 };
 
+struct SpectrumBridge {
+    JNIEnv* env;
+    jobject callback;
+    jmethodID method;
+};
+
 void report_progress(const pitchee_progress_t* progress, void* user_data) {
     auto* bridge = static_cast<ProgressBridge*>(user_data);
     if (bridge == nullptr || bridge->callback == nullptr || bridge->method == nullptr
@@ -73,6 +79,42 @@ void report_f0_frame(const pitchee_f0_frame_t* frame, void* user_data) {
         static_cast<jfloat>(frame->confidence),
         frame->voiced != 0
     );
+    if (bridge->env->ExceptionCheck()) bridge->env->ExceptionClear();
+}
+
+void report_spectrum_frame(
+    const pitchee_spectrum_frame_t* frame,
+    void* user_data
+) {
+    auto* bridge = static_cast<SpectrumBridge*>(user_data);
+    if (bridge == nullptr || bridge->callback == nullptr || bridge->method == nullptr
+        || frame == nullptr) {
+        return;
+    }
+
+    jfloatArray magnitudes = bridge->env->NewFloatArray(
+        static_cast<jsize>(frame->bin_count)
+    );
+    if (magnitudes == nullptr) return;
+    bridge->env->SetFloatArrayRegion(
+        magnitudes,
+        0,
+        static_cast<jsize>(frame->bin_count),
+        frame->magnitudes
+    );
+    bridge->env->CallVoidMethod(
+        bridge->callback,
+        bridge->method,
+        static_cast<jdouble>(frame->timestamp_seconds),
+        magnitudes,
+        static_cast<jlong>(frame->first_bin_index),
+        static_cast<jfloat>(frame->bin_hz),
+        static_cast<jfloat>(frame->peak_hz),
+        static_cast<jfloat>(frame->centroid_hz),
+        static_cast<jfloat>(frame->rolloff_hz),
+        static_cast<jfloat>(frame->flatness)
+    );
+    bridge->env->DeleteLocalRef(magnitudes);
     if (bridge->env->ExceptionCheck()) bridge->env->ExceptionClear();
 }
 
@@ -344,4 +386,103 @@ Java_space_pitchee_core_PitcheeRealtimeF0_nativeDestroy(
     jlong stream_handle
 ) {
     pitchee_realtime_f0_destroy(reinterpret_cast<pitchee_realtime_f0_t*>(stream_handle));
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_space_pitchee_core_PitcheeSpectrum_nativeCreate(
+    JNIEnv* env,
+    jclass,
+    jint fft_size,
+    jint hop_samples,
+    jint min_hz,
+    jint max_hz,
+    jint value_type,
+    jfloat smoothing
+) {
+    pitchee_spectrum_options_t options{};
+    options.fft_size = fft_size;
+    options.hop_samples = hop_samples;
+    options.min_hz = min_hz;
+    options.max_hz = max_hz;
+    options.value_type = static_cast<pitchee_spectrum_value_t>(value_type);
+    options.smoothing = smoothing;
+
+    pitchee_spectrum_t* spectrum = nullptr;
+    char error[1024] = {};
+    const auto status = pitchee_spectrum_create(
+        &options,
+        &spectrum,
+        error,
+        sizeof(error)
+    );
+    if (status != PITCHEE_SUCCESS) {
+        throw_illegal_state(env, error);
+        return 0;
+    }
+    return reinterpret_cast<jlong>(spectrum);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_space_pitchee_core_PitcheeSpectrum_nativeProcess(
+    JNIEnv* env,
+    jobject,
+    jlong handle,
+    jfloatArray samples,
+    jobject frame_callback
+) {
+    auto* spectrum = reinterpret_cast<pitchee_spectrum_t*>(handle);
+    if (spectrum == nullptr || samples == nullptr || frame_callback == nullptr) {
+        throw_illegal_state(env, "spectrum or PCM buffer is null");
+        return 0;
+    }
+
+    const jsize count = env->GetArrayLength(samples);
+    std::vector<float> pcm(static_cast<size_t>(count));
+    env->GetFloatArrayRegion(samples, 0, count, pcm.data());
+
+    jclass callback_class = env->GetObjectClass(frame_callback);
+    jmethodID frame_method = env->GetMethodID(
+        callback_class,
+        "onFrame",
+        "(D[FJFFFFF)V"
+    );
+    env->DeleteLocalRef(callback_class);
+    if (frame_method == nullptr) return 0;
+
+    SpectrumBridge bridge{env, frame_callback, frame_method};
+    size_t frame_count = 0;
+    char error[1024] = {};
+    const auto status = pitchee_spectrum_process(
+        spectrum,
+        pcm.data(),
+        pcm.size(),
+        report_spectrum_frame,
+        &bridge,
+        &frame_count,
+        error,
+        sizeof(error)
+    );
+    if (status != PITCHEE_SUCCESS) {
+        throw_illegal_state(env, error);
+        return 0;
+    }
+    return static_cast<jlong>(frame_count);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_space_pitchee_core_PitcheeSpectrum_nativeReset(
+    JNIEnv*,
+    jobject,
+    jlong handle
+) {
+    pitchee_spectrum_reset(reinterpret_cast<pitchee_spectrum_t*>(handle));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_space_pitchee_core_PitcheeSpectrum_nativeDestroy(
+    JNIEnv*,
+    jobject,
+    jlong handle
+) {
+    pitchee_spectrum_destroy(reinterpret_cast<pitchee_spectrum_t*>(handle));
 }
