@@ -177,6 +177,7 @@ internal fun RealtimeSpectrumScreen() {
                 mode = state.mode,
                 onToggle = ::toggleAnalysis,
                 onRewind = viewModel::rewindFiveSeconds,
+                onForward = viewModel::forwardFiveSeconds,
             )
         }
     }
@@ -187,6 +188,7 @@ private fun SpectrumControls(
     mode: SpectrumMode,
     onToggle: () -> Unit,
     onRewind: () -> Unit,
+    onForward: () -> Unit,
 ) {
     val showToolbar = mode != SpectrumMode.IDLE
     val containerColor by animateColorAsState(
@@ -232,6 +234,7 @@ private fun SpectrumControls(
                     mode = mode,
                     onToggle = onToggle,
                     onRewind = onRewind,
+                    onForward = onForward,
                 )
             } else {
                 Box(
@@ -256,6 +259,7 @@ private fun SpectrumToolbarContent(
     mode: SpectrumMode,
     onToggle: () -> Unit,
     onRewind: () -> Unit,
+    onForward: () -> Unit,
 ) {
     val resumeAnalysis = mode == SpectrumMode.REPLAYING ||
         mode == SpectrumMode.ANALYSIS_PAUSED
@@ -270,6 +274,7 @@ private fun SpectrumToolbarContent(
             contentDescription = stringResource(R.string.spectrum_rewind_5),
             onClick = onRewind,
             animateOnClick = true,
+            rotationDirection = -1f,
         )
         AnimatedContent(
             targetState = if (mode == SpectrumMode.PREPARING) null else centerIcon,
@@ -308,6 +313,13 @@ private fun SpectrumToolbarContent(
                     )
                 }
             }
+            ControlIconButton(
+                iconRes = R.drawable.ic_forward,
+                contentDescription = stringResource(R.string.spectrum_forward_5),
+                onClick = onForward,
+                animateOnClick = true,
+                rotationDirection = 1f,
+            )
         }
     }
 }
@@ -318,10 +330,11 @@ private fun ControlIconButton(
     contentDescription: String,
     onClick: () -> Unit,
     animateOnClick: Boolean = false,
+    rotationDirection: Float = -1f,
 ) {
     var spinCount by remember { mutableIntStateOf(0) }
     val rotation by animateFloatAsState(
-        targetValue = if (animateOnClick) spinCount * -360f else 0f,
+        targetValue = if (animateOnClick) spinCount * 360f * rotationDirection else 0f,
         animationSpec = spring(dampingRatio = 0.72f, stiffness = 260f),
         label = "spectrum-seek-rotation",
     )

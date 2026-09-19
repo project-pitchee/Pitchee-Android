@@ -125,6 +125,45 @@ class SpectrumViewModel(
         )
     }
 
+    fun forwardFiveSeconds() {
+        if (mutableState.value.mode != SpectrumMode.REPLAYING) return
+        if (!acceptControlEvent()) return
+        val currentPosition = mutableState.value.playbackPositionSeconds ?: return
+        val currentWindowStart = mutableState.value.replayWindowStartSeconds ?: return
+        val currentWindowEnd = mutableState.value.replayWindowEndSeconds ?: return
+        val targetSeconds = currentPosition + WINDOW_SECONDS
+        val tailSeconds = replayTailSample.toDouble() / SAMPLE_RATE
+        stopPlaybackInternal()
+
+        if (targetSeconds >= tailSeconds - END_EPSILON_SECONDS) {
+            updateReplayState(
+                positionSample = replayTailSample,
+                windowStartSample = (replayTailSample - (WINDOW_SECONDS * SAMPLE_RATE).toLong())
+                    .coerceAtLeast(oldestSample()),
+                windowEndSample = replayTailSample,
+                tailSample = replayTailSample,
+            )
+            resumeAnalysis()
+            return
+        }
+
+        val (windowStart, windowEnd) = if (
+            targetSeconds >= currentWindowEnd - END_EPSILON_SECONDS
+        ) {
+            currentWindowEnd to min(
+                currentWindowEnd + WINDOW_SECONDS,
+                tailSeconds,
+            )
+        } else {
+            currentWindowStart to currentWindowEnd
+        }
+        startReplayWindow(
+            startSeconds = windowStart,
+            endSeconds = windowEnd,
+            positionSeconds = targetSeconds,
+        )
+    }
+
     fun toggleAnalysis() {
         if (!acceptControlEvent()) return
         when (mutableState.value.mode) {
@@ -276,6 +315,7 @@ class SpectrumViewModel(
     private fun startReplayWindow(
         startSeconds: Double,
         endSeconds: Double,
+        positionSeconds: Double = startSeconds,
     ) {
         val startSample = (startSeconds * SAMPLE_RATE).toLong()
             .coerceAtLeast(oldestSample())
@@ -286,9 +326,11 @@ class SpectrumViewModel(
             resumeAnalysis()
             return
         }
+        val positionSample = (positionSeconds * SAMPLE_RATE).toLong()
+            .coerceIn(startSample, endSample)
 
         updateReplayState(
-            positionSample = startSample,
+            positionSample = positionSample,
             windowStartSample = startSample,
             windowEndSample = endSample,
             tailSample = replayTailSample,
@@ -309,12 +351,16 @@ class SpectrumViewModel(
                 var windowEnd = endSample
                 while (isActive && windowStart < replayTailSample) {
                     updateReplayState(
-                        positionSample = windowStart,
+                        positionSample = if (windowStart == startSample) {
+                            positionSample
+                        } else {
+                            windowStart
+                        },
                         windowStartSample = windowStart,
                         windowEndSample = windowEnd,
                         tailSample = replayTailSample,
                     )
-                    var position = windowStart
+                    var position = if (windowStart == startSample) positionSample else windowStart
                     while (isActive && position < windowEnd) {
                         val count = min(
                             PLAYBACK_CHUNK_SAMPLES,
