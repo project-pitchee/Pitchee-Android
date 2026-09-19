@@ -26,6 +26,11 @@
     <string name="update_later">稍后</string>
     <string name="update_downloading_title">正在下载更新</string>
     <string name="recording_again">重新录音</string>
+    <string name="history_detail_loading">正在打开历史分析</string>
+    <string name="history_detail_back">返回仪表盘</string>
+    <string name="history_detail_back_result">返回结果</string>
+    <string name="history_detail_rules">评分规则</string>
+    <string name="history_detail_rules_subtitle">查看这次测评的完整计算过程</string>
     <string name="dashboard_title">仪表盘</string>
     <string name="dashboard_average_f0">我的平均 F0</string>
     <string name="dashboard_no_realtime">还没有实时基频记录</string>
@@ -38,6 +43,9 @@
     <string name="dashboard_metric_no_data">还没有足够的测评数据来绘制轨迹。</string>
     <string name="dashboard_reset">重置</string>
     <string name="dashboard_delete_record">删除这条记录</string>
+    <string name="dashboard_pin_record">置顶</string>
+    <string name="dashboard_unpin_record">取消置顶</string>
+    <string name="dashboard_pinned">已置顶</string>
     <string name="dashboard_analysis_history">声音分析记录</string>
     <string name="dashboard_no_analysis">完成一次声音分析后，记录会显示在这里。</string>
 

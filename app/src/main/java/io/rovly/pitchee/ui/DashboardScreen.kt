@@ -1,6 +1,11 @@
 package io.rovly.pitchee.ui
 
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -11,11 +16,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.FilterChip
@@ -30,23 +36,30 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import io.rovly.pitchee.R
 import io.rovly.pitchee.data.AnalysisHistoryEntry
 import io.rovly.pitchee.data.HistoryStore
@@ -67,12 +80,22 @@ internal fun DashboardScreen(refreshKey: Any? = Unit) {
     val context = LocalContext.current
     val store = remember(context) { HistoryStore(context) }
     var data by remember { mutableStateOf(DashboardData()) }
+    var selectedEntry by remember { mutableStateOf<AnalysisHistoryEntry?>(null) }
 
     LaunchedEffect(refreshKey) {
         data = DashboardData(
             realtimeF0 = store.realtimeF0(),
             analyses = store.analyses(),
         )
+    }
+
+    selectedEntry?.let { entry ->
+        AnalysisHistoryDetailScreen(
+            entry = entry,
+            store = store,
+            onBack = { selectedEntry = null },
+        )
+        return
     }
 
     val averageF0 = data.realtimeF0
@@ -156,6 +179,7 @@ internal fun DashboardScreen(refreshKey: Any? = Unit) {
             data.analyses.take(20).forEachIndexed { index, entry ->
                 AnalysisHistoryRow(
                     entry = entry,
+                    onOpen = { selectedEntry = entry },
                     onDelete = {
                         store.removeAnalysis(entry.timestampMillis)
                         data = data.copy(
@@ -163,6 +187,13 @@ internal fun DashboardScreen(refreshKey: Any? = Unit) {
                                 it.timestampMillis == entry.timestampMillis
                             },
                         )
+                    },
+                    onPin = {
+                        store.setAnalysisPinned(
+                            timestampMillis = entry.timestampMillis,
+                            pinned = !entry.pinned,
+                        )
+                        data = data.copy(analyses = store.analyses())
                     },
                 )
                 if (index != data.analyses.take(20).lastIndex) {
@@ -404,8 +435,98 @@ private fun nearestPointIndex(
 @Composable
 private fun AnalysisHistoryRow(
     entry: AnalysisHistoryEntry,
+    onOpen: () -> Unit,
     onDelete: () -> Unit,
+    onPin: () -> Unit,
 ) {
+    val density = LocalDensity.current
+    val maxRevealPx = with(density) { 96.dp.toPx() }
+    var offsetX by remember(entry.timestampMillis) { mutableFloatStateOf(0f) }
+    val scope = rememberCoroutineScope()
+
+    fun settle() {
+        val target = if (offsetX < -maxRevealPx / 2f) -maxRevealPx else 0f
+        scope.launch {
+            animate(
+                initialValue = offsetX,
+                targetValue = target,
+                animationSpec = spring(dampingRatio = 0.82f, stiffness = 320f),
+            ) { value, _ -> offsetX = value }
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp)),
+    ) {
+        Row(
+            modifier = Modifier.matchParentSize(),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            IconButton(
+                onClick = {
+                    onPin()
+                    settle()
+                },
+                modifier = Modifier
+                    .width(48.dp)
+                    .fillMaxHeight()
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_pin),
+                    contentDescription = stringResource(
+                        if (entry.pinned) R.string.dashboard_unpin_record
+                        else R.string.dashboard_pin_record,
+                    ),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+            IconButton(
+                onClick = {
+                    onDelete()
+                    settle()
+                },
+                modifier = Modifier
+                    .width(48.dp)
+                    .fillMaxHeight()
+                    .background(MaterialTheme.colorScheme.errorContainer),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_delete),
+                    contentDescription = stringResource(R.string.dashboard_delete_record),
+                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
+        }
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .offset { IntOffset(offsetX.roundToInt(), 0) }
+                .pointerInput(entry.timestampMillis) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = { settle() },
+                        onDragCancel = { settle() },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            offsetX = (offsetX + dragAmount)
+                                .coerceIn(-maxRevealPx, 0f)
+                        },
+                    )
+                }
+                .clickable {
+                    if (offsetX < 0f) settle() else onOpen()
+                },
+            color = MaterialTheme.colorScheme.background,
+        ) {
+            AnalysisHistoryContent(entry)
+        }
+    }
+}
+
+@Composable
+private fun AnalysisHistoryContent(entry: AnalysisHistoryEntry) {
     val locale = LocalConfiguration.current.locales[0]
     val timestamp = remember(entry.timestampMillis, locale) {
         DateFormat.getDateTimeInstance(
@@ -439,6 +560,14 @@ private fun AnalysisHistoryRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        if (entry.pinned) {
+            Text(
+                text = stringResource(R.string.dashboard_pinned),
+                modifier = Modifier.padding(end = 10.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
         Text(
             text = "%.1f".format(entry.finalScore),
             style = MaterialTheme.typography.headlineSmall,
@@ -446,13 +575,5 @@ private fun AnalysisHistoryRow(
             color = feminineScoreColor(entry.finalScore),
             textAlign = TextAlign.End,
         )
-        Spacer(Modifier.width(4.dp))
-        IconButton(onClick = onDelete) {
-            Icon(
-                painter = painterResource(R.drawable.ic_delete),
-                contentDescription = stringResource(R.string.dashboard_delete_record),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
     }
 }

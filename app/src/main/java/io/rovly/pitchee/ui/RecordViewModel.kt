@@ -187,13 +187,15 @@ class RecordViewModel(
                     lastResultScore = result.composite.finalScore
                     lastResultMetrics = currentMetrics
                     historyStore.addAnalysis(
-                        AnalysisHistoryEntry(
+                        entry = AnalysisHistoryEntry(
                             timestampMillis = System.currentTimeMillis(),
                             finalScore = result.composite.finalScore,
                             standardScore = currentMetrics.standardScore,
                             naturalnessScore = currentMetrics.naturalnessScore,
                             meanF0Hz = currentMetrics.meanF0Hz,
                         ),
+                        result = result,
+                        sourceAudio = recordedAudio.file,
                     )
                     scoreHistory.edit()
                         .putFloat(KEY_LAST_RESULT_SCORE, result.composite.finalScore.toFloat())

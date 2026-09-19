@@ -71,8 +71,15 @@ class UpdateViewModel(
                 onSuccess = { release ->
                     when {
                         release == null -> UpdateUiState.UpToDate
-                        !manual && release.tagName == ignoredReleaseTag() -> UpdateUiState.UpToDate
-                        else -> UpdateUiState.Available(release)
+                        !manual && release.tagName == notifiedReleaseTag() -> UpdateUiState.UpToDate
+                        else -> {
+                            if (!manual) {
+                                preferences.edit()
+                                    .putString(KEY_NOTIFIED_RELEASE, release.tagName)
+                                    .apply()
+                            }
+                            UpdateUiState.Available(release)
+                        }
                     }
                 },
                 onFailure = {
@@ -89,7 +96,7 @@ class UpdateViewModel(
 
     fun dismissUpdate() {
         val release = (mutableState.value as? UpdateUiState.Available)?.release ?: return
-        preferences.edit().putString(KEY_IGNORED_RELEASE, release.tagName).apply()
+        preferences.edit().putString(KEY_NOTIFIED_RELEASE, release.tagName).apply()
         mutableState.value = UpdateUiState.Idle
     }
 
@@ -101,7 +108,7 @@ class UpdateViewModel(
 
     fun download(release: GitHubRelease) {
         if (mutableState.value is UpdateUiState.Downloading) return
-        preferences.edit().remove(KEY_IGNORED_RELEASE).apply()
+        preferences.edit().remove(KEY_NOTIFIED_RELEASE).apply()
         viewModelScope.launch {
             mutableState.value = UpdateUiState.Downloading(release, null)
             val result = runCatching {
@@ -117,12 +124,12 @@ class UpdateViewModel(
     }
 
     fun markInstallLaunched() {
-        preferences.edit().remove(KEY_IGNORED_RELEASE).apply()
+        preferences.edit().remove(KEY_NOTIFIED_RELEASE).apply()
         mutableState.value = UpdateUiState.Idle
     }
 
-    private fun ignoredReleaseTag(): String? =
-        preferences.getString(KEY_IGNORED_RELEASE, null)
+    private fun notifiedReleaseTag(): String? =
+        preferences.getString(KEY_NOTIFIED_RELEASE, null)
 
     private suspend fun downloadApk(release: GitHubRelease): File = withContext(Dispatchers.IO) {
         val directory = File(appContext.cacheDir, UPDATE_DIRECTORY).apply {
@@ -177,7 +184,7 @@ class UpdateViewModel(
     companion object {
         private const val UPDATE_PREFERENCES = "update_preferences"
         private const val KEY_AUTO_CHECK = "auto_check"
-        private const val KEY_IGNORED_RELEASE = "ignored_release"
+        private const val KEY_NOTIFIED_RELEASE = "notified_release"
         private const val UPDATE_DIRECTORY = "updates"
 
         fun factory(context: Context): ViewModelProvider.Factory = viewModelFactory {
