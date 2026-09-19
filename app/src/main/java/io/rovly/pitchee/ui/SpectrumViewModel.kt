@@ -152,12 +152,14 @@ class SpectrumViewModel(
         mutableState.value = SpectrumUiState()
     }
 
+    @Synchronized
     private fun startAnalysisInternal() {
         if (mutableState.value.mode == SpectrumMode.ANALYZING ||
             mutableState.value.mode == SpectrumMode.PREPARING
         ) {
             return
         }
+        stopLiveCapture()
         stopPlaybackInternal()
         replayTailSample = 0L
         mutableState.update {
@@ -178,6 +180,7 @@ class SpectrumViewModel(
                     minHz = MIN_HZ,
                     maxHz = MAX_HZ,
                 ).also { spectrum = it }
+                recorder.stop()
                 recorder.start()
                 mutableState.update { it.copy(mode = SpectrumMode.ANALYZING) }
                 val buffer = FloatArray(READ_SAMPLES)

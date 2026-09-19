@@ -33,14 +33,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -80,10 +76,9 @@ internal fun RealtimeSpectrumScreen() {
     val factory = remember { SpectrumViewModel.factory(context.applicationContext) }
     val viewModel: SpectrumViewModel = viewModel(factory = factory)
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
     val lastPageMessage = stringResource(R.string.spectrum_last_page)
     val rewindMessageFormat = stringResource(R.string.spectrum_rewind_seconds)
-    var rewindFeedback by remember { mutableStateOf<SpectrumRewindFeedback?>(null) }
+    var rewindMessage by remember { mutableStateOf<String?>(null) }
     var permissionDenied by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -98,6 +93,7 @@ internal fun RealtimeSpectrumScreen() {
     }
 
     fun toggleAnalysis() {
+        rewindMessage = null
         if (state.mode == SpectrumMode.IDLE) {
             val granted = ContextCompat.checkSelfPermission(
                 context,
@@ -115,22 +111,12 @@ internal fun RealtimeSpectrumScreen() {
     }
 
     fun rewind() {
-        rewindFeedback = viewModel.rewindFiveSeconds()
-    }
-
-    LaunchedEffect(rewindFeedback) {
-        val feedback = rewindFeedback ?: return@LaunchedEffect
-        val message = if (feedback.isLastPage) {
+        val feedback = viewModel.rewindFiveSeconds() ?: return
+        rewindMessage = if (feedback.isLastPage) {
             lastPageMessage
         } else {
             rewindMessageFormat.format(feedback.secondsFromLatest)
         }
-        snackbarHostState.currentSnackbarData?.dismiss()
-        snackbarHostState.showSnackbar(
-            message = message,
-            duration = SnackbarDuration.Short,
-        )
-        rewindFeedback = null
     }
 
     Box(
@@ -181,6 +167,15 @@ internal fun RealtimeSpectrumScreen() {
                 .padding(horizontal = 20.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.End,
         ) {
+            rewindMessage?.let { message ->
+                Text(
+                    text = message,
+                    modifier = Modifier.padding(bottom = 10.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.End,
+                )
+            }
             state.error?.let { error ->
                 Text(
                     text = error,
@@ -206,12 +201,6 @@ internal fun RealtimeSpectrumScreen() {
             )
         }
 
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 104.dp),
-        )
     }
 }
 
