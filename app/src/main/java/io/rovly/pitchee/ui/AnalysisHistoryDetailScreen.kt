@@ -106,11 +106,17 @@ internal fun AnalysisHistoryDetailScreen(
         }
     }
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
+    SwipeBackContainer(
+        enabled = true,
+        onBack = {
+            if (showingRules) showingRules = false else onBack()
+        },
     ) {
-        when (val current = state) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+        ) {
+            when (val current = state) {
             HistoryDetailState.Loading -> {
                 Column(
                     modifier = Modifier.fillMaxSize(),
@@ -167,6 +173,7 @@ internal fun AnalysisHistoryDetailScreen(
                         onOpenRules = { showingRules = true },
                     )
                 }
+            }
             }
         }
     }

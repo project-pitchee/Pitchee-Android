@@ -83,6 +83,8 @@ private enum class PitcheeDestination(
     SCORE_RULES(R.string.nav_score_test, R.drawable.ic_model_analysis),
 }
 
+private class DashboardScrollPosition(var value: Int = 0)
+
 @Preview
 @Composable
 fun PitcheeApp() {
@@ -126,6 +128,7 @@ fun PitcheeApp() {
     val destinations = remember(debugBuild) {
         PitcheeDestination.entries.filter { it != PitcheeDestination.SCORE_RULES || debugBuild }
     }
+    val dashboardScrollPosition = remember { DashboardScrollPosition() }
 
     LaunchedEffect(Unit) {
         updateViewModel.checkOnLaunch()
@@ -220,13 +223,19 @@ fun PitcheeApp() {
             }
         },
     ) { innerPadding ->
-        Box(
+        SwipeBackContainer(
+            enabled = destinations[selectedIndex] != PitcheeDestination.DASHBOARD,
+            onBack = { selectedIndex = 0 },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
             when (destinations[selectedIndex]) {
-                PitcheeDestination.DASHBOARD -> DashboardScreen(refreshKey = selectedIndex)
+                PitcheeDestination.DASHBOARD -> DashboardScreen(
+                    refreshKey = selectedIndex,
+                    initialScrollPosition = dashboardScrollPosition.value,
+                    onScrollPositionChange = { dashboardScrollPosition.value = it },
+                )
                 PitcheeDestination.PITCH -> RealtimePitchScreen()
                 PitcheeDestination.ANALYSIS -> RecordAnalysisScreen()
                 PitcheeDestination.SETTINGS -> SettingsScreen(
@@ -295,83 +304,88 @@ private fun RecordAnalysisScreen() {
     ) {
         when (val current = state) {
             is RecordUiState.Success -> {
-                AnimatedContent(
-                    targetState = showingRules,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background),
-                    transitionSpec = {
-                        if (targetState) {
-                            slideInHorizontally(
-                                animationSpec = spring(dampingRatio = 0.84f, stiffness = 280f),
-                                initialOffsetX = { it / 2 },
-                            ) togetherWith slideOutHorizontally(
-                                animationSpec = spring(dampingRatio = 0.9f, stiffness = 320f),
-                                targetOffsetX = { -it / 3 },
-                            )
-                        } else {
-                            slideInHorizontally(
-                                animationSpec = spring(dampingRatio = 0.84f, stiffness = 280f),
-                                initialOffsetX = { -it / 3 },
-                            ) togetherWith slideOutHorizontally(
-                                animationSpec = spring(dampingRatio = 0.9f, stiffness = 320f),
-                                targetOffsetX = { it / 2 },
-                            )
-                        }
-                    },
-                    label = "score-rules-page",
-                ) { rulesVisible ->
-                    if (rulesVisible) {
-                        ScoreRulesPage(
-                            result = current.result,
-                            previousScore = current.previousScore,
-                            previousMetrics = current.previousMetrics,
-                            onBack = { showingRules = false },
-                        )
-                    } else {
-                        Surface(
-                            modifier = Modifier.fillMaxSize(),
-                            color = MaterialTheme.colorScheme.background,
-                        ) {
-                            val animateScore = remember(current.scoreAnimationToken) {
-                                viewModel.consumeScoreAnimation(current.scoreAnimationToken)
-                            }
-                            val playbackTimeline = remember(
-                                current.result,
-                                current.audio.durationSeconds,
-                            ) {
-                                FeminineTimeline.from(
-                                    result = current.result,
-                                    durationSeconds = current.audio.durationSeconds,
+                SwipeBackContainer(
+                    enabled = showingRules,
+                    onBack = { showingRules = false },
+                ) {
+                    AnimatedContent(
+                        targetState = showingRules,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.background),
+                        transitionSpec = {
+                            if (targetState) {
+                                slideInHorizontally(
+                                    animationSpec = spring(dampingRatio = 0.84f, stiffness = 280f),
+                                    initialOffsetX = { it / 2 },
+                                ) togetherWith slideOutHorizontally(
+                                    animationSpec = spring(dampingRatio = 0.9f, stiffness = 320f),
+                                    targetOffsetX = { -it / 3 },
+                                )
+                            } else {
+                                slideInHorizontally(
+                                    animationSpec = spring(dampingRatio = 0.84f, stiffness = 280f),
+                                    initialOffsetX = { -it / 3 },
+                                ) togetherWith slideOutHorizontally(
+                                    animationSpec = spring(dampingRatio = 0.9f, stiffness = 320f),
+                                    targetOffsetX = { it / 2 },
                                 )
                             }
-                            ScreenColumn {
-                                ScoreResultContent(
-                                    result = current.result,
-                                    previousScore = current.previousScore,
-                                    previousMetrics = current.previousMetrics,
-                                    animateScore = animateScore,
-                                    onOpenRules = { showingRules = true },
+                        },
+                        label = "score-rules-page",
+                    ) { rulesVisible ->
+                        if (rulesVisible) {
+                            ScoreRulesPage(
+                                result = current.result,
+                                previousScore = current.previousScore,
+                                previousMetrics = current.previousMetrics,
+                                onBack = { showingRules = false },
+                            )
+                        } else {
+                            Surface(
+                                modifier = Modifier.fillMaxSize(),
+                                color = MaterialTheme.colorScheme.background,
+                            ) {
+                                val animateScore = remember(current.scoreAnimationToken) {
+                                    viewModel.consumeScoreAnimation(current.scoreAnimationToken)
+                                }
+                                val playbackTimeline = remember(
+                                    current.result,
+                                    current.audio.durationSeconds,
                                 ) {
-                                    RecordedAudioTimeline(
-                                        audio = current.audio,
-                                        f0Windows = current.result.f0.windows,
-                                        segmentScores = current.segmentScores,
-                                        metricsTimeline = playbackTimeline,
+                                    FeminineTimeline.from(
+                                        result = current.result,
+                                        durationSeconds = current.audio.durationSeconds,
                                     )
                                 }
-                                Spacer(Modifier.height(12.dp))
-                                TextButton(
-                                    onClick = {
-                                        viewModel.reset()
-                                        startRecording()
-                                    },
-                                    colors = ButtonDefaults.textButtonColors(
-                                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    ),
-                                    modifier = Modifier.align(Alignment.CenterHorizontally),
-                                ) {
-                                    Text(stringResource(R.string.recording_again))
+                                ScreenColumn {
+                                    ScoreResultContent(
+                                        result = current.result,
+                                        previousScore = current.previousScore,
+                                        previousMetrics = current.previousMetrics,
+                                        animateScore = animateScore,
+                                        onOpenRules = { showingRules = true },
+                                    ) {
+                                        RecordedAudioTimeline(
+                                            audio = current.audio,
+                                            f0Windows = current.result.f0.windows,
+                                            segmentScores = current.segmentScores,
+                                            metricsTimeline = playbackTimeline,
+                                        )
+                                    }
+                                    Spacer(Modifier.height(12.dp))
+                                    TextButton(
+                                        onClick = {
+                                            viewModel.reset()
+                                            startRecording()
+                                        },
+                                        colors = ButtonDefaults.textButtonColors(
+                                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        ),
+                                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                                    ) {
+                                        Text(stringResource(R.string.recording_again))
+                                    }
                                 }
                             }
                         }
@@ -450,11 +464,15 @@ private fun ScoreRulesPage(
     if (onBack != null) {
         BackHandler(onBack = onBack)
     }
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
+    SwipeBackContainer(
+        enabled = onBack != null,
+        onBack = { onBack?.invoke() },
     ) {
-        ScreenColumn {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+        ) {
+            ScreenColumn {
             if (onBack != null) {
                 TextButton(
                     onClick = onBack,
@@ -480,6 +498,7 @@ private fun ScoreRulesPage(
                 previousScore = previousScore,
                 previousMetrics = previousMetrics,
             )
+            }
         }
     }
 }

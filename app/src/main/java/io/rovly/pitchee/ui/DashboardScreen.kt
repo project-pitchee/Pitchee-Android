@@ -2,7 +2,12 @@ package io.rovly.pitchee.ui
 
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -35,11 +40,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -71,6 +78,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlinx.coroutines.flow.first
 
 private data class DashboardData(
     val realtimeF0: List<RealtimeF0HistoryEntry> = emptyList(),
@@ -84,11 +92,19 @@ private val ResetContainerDark = Color(0xFF493034)
 private val ResetContentDark = Color(0xFFF0C8CC)
 
 @Composable
-internal fun DashboardScreen(refreshKey: Any? = Unit) {
+internal fun DashboardScreen(
+    refreshKey: Any? = Unit,
+    initialScrollPosition: Int = 0,
+    onScrollPositionChange: (Int) -> Unit = {},
+) {
     val context = LocalContext.current
     val store = remember(context) { HistoryStore(context) }
     var data by remember { mutableStateOf(DashboardData()) }
     var selectedEntry by remember { mutableStateOf<AnalysisHistoryEntry?>(null) }
+    val scrollState = rememberScrollState()
+    var scrollPositionRestored by remember {
+        mutableStateOf(initialScrollPosition <= 0)
+    }
 
     LaunchedEffect(refreshKey) {
         data = DashboardData(
@@ -98,13 +114,25 @@ internal fun DashboardScreen(refreshKey: Any? = Unit) {
         )
     }
 
-    selectedEntry?.let { entry ->
-        AnalysisHistoryDetailScreen(
-            entry = entry,
-            store = store,
-            onBack = { selectedEntry = null },
-        )
-        return
+    LaunchedEffect(
+        data.realtimeF0,
+        data.analyses,
+        initialScrollPosition,
+        scrollPositionRestored,
+    ) {
+        if (!scrollPositionRestored && (data.realtimeF0.isNotEmpty() || data.analyses.isNotEmpty())) {
+            snapshotFlow { scrollState.maxValue }
+                .first { it >= initialScrollPosition || it > 0 }
+            scrollState.scrollTo(initialScrollPosition.coerceAtMost(scrollState.maxValue))
+            scrollPositionRestored = true
+        }
+    }
+
+    LaunchedEffect(scrollState, scrollPositionRestored) {
+        if (!scrollPositionRestored) return@LaunchedEffect
+        snapshotFlow { scrollState.value }.collect { value ->
+            onScrollPositionChange(value)
+        }
     }
 
     val f0Sources = buildList<Pair<Long, Double>> {
@@ -124,12 +152,46 @@ internal fun DashboardScreen(refreshKey: Any? = Unit) {
     val latestF0 = f0Sources.maxByOrNull { it.first }?.second
     val darkTheme = isSystemInDarkTheme()
 
-    Column(
+    AnimatedContent(
+        targetState = selectedEntry,
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 24.dp),
-    ) {
+            .background(MaterialTheme.colorScheme.background),
+        transitionSpec = {
+            if (targetState != null) {
+                slideInHorizontally(
+                    animationSpec = spring(dampingRatio = 0.86f, stiffness = 300f),
+                    initialOffsetX = { it },
+                ) togetherWith slideOutHorizontally(
+                    animationSpec = spring(dampingRatio = 0.9f, stiffness = 340f),
+                    targetOffsetX = { -it / 3 },
+                )
+            } else {
+                slideInHorizontally(
+                    animationSpec = spring(dampingRatio = 0.86f, stiffness = 300f),
+                    initialOffsetX = { -it / 3 },
+                ) togetherWith slideOutHorizontally(
+                    animationSpec = spring(dampingRatio = 0.9f, stiffness = 340f),
+                    targetOffsetX = { it },
+                )
+            }
+        },
+        contentKey = { it?.timestampMillis ?: -1L },
+        label = "dashboard-history-page",
+    ) { entry ->
+        if (entry != null) {
+            AnalysisHistoryDetailScreen(
+                entry = entry,
+                store = store,
+                onBack = { selectedEntry = null },
+            )
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 20.dp, vertical = 24.dp),
+            ) {
         Text(
             text = stringResource(R.string.dashboard_title),
             style = MaterialTheme.typography.headlineMedium,
@@ -220,28 +282,32 @@ internal fun DashboardScreen(refreshKey: Any? = Unit) {
             )
         } else {
             data.analyses.take(20).forEach { entry ->
-                AnalysisHistoryRow(
-                    entry = entry,
-                    onOpen = { selectedEntry = entry },
-                    onDelete = {
-                        store.removeAnalysis(entry.timestampMillis)
-                        data = data.copy(
-                            analyses = data.analyses.filterNot {
-                                it.timestampMillis == entry.timestampMillis
-                            },
-                        )
-                    },
-                    onPin = {
-                        store.setAnalysisPinned(
-                            timestampMillis = entry.timestampMillis,
-                            pinned = !entry.pinned,
-                        )
-                        data = data.copy(analyses = store.analyses())
-                    },
-                )
+                key(entry.timestampMillis) {
+                    AnalysisHistoryRow(
+                        entry = entry,
+                        onOpen = { selectedEntry = entry },
+                        onDelete = {
+                            store.removeAnalysis(entry.timestampMillis)
+                            data = data.copy(
+                                analyses = data.analyses.filterNot {
+                                    it.timestampMillis == entry.timestampMillis
+                                },
+                            )
+                        },
+                        onPin = {
+                            store.setAnalysisPinned(
+                                timestampMillis = entry.timestampMillis,
+                                pinned = !entry.pinned,
+                            )
+                            data = data.copy(analyses = store.analyses())
+                        },
+                    )
+                }
             }
         }
-        Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(20.dp))
+            }
+        }
     }
 }
 
@@ -258,7 +324,9 @@ private enum class AnalysisMetric(
 private fun AnalysisMetricSection(entries: List<AnalysisHistoryEntry>) {
     var selectedOrdinal by rememberSaveable { mutableIntStateOf(AnalysisMetric.F0.ordinal) }
     val selected = AnalysisMetric.entries[selectedOrdinal]
-    val chronological = entries.take(30).asReversed()
+    val chronological = entries
+        .sortedBy { it.timestampMillis }
+        .takeLast(30)
     val points = chronological.mapNotNull { entry ->
         val value = when (selected) {
             AnalysisMetric.F0 -> entry.meanF0Hz?.toFloat()
@@ -520,6 +588,16 @@ private fun AnalysisHistoryRow(
         }
     }
 
+    fun close() {
+        scope.launch {
+            animate(
+                initialValue = offsetX,
+                targetValue = 0f,
+                animationSpec = spring(dampingRatio = 0.82f, stiffness = 320f),
+            ) { value, _ -> offsetX = value }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -542,7 +620,7 @@ private fun AnalysisHistoryRow(
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 onClick = {
                     onPin()
-                    settle()
+                    close()
                 },
             )
             HistorySwipeAction(

@@ -36,15 +36,16 @@ internal fun PitchSessionSummaryScreen(
     val masculineColor = Color(0xFF6495ED)
     val feminineColor = Color(0xFFFFB6C1)
     val emptyRatioColor = MaterialTheme.colorScheme.outlineVariant
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 24.dp),
+    SwipeBackContainer(enabled = true, onBack = onBack) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp, vertical = 24.dp),
+            ) {
             Text(
                 text = stringResource(R.string.pitch_summary_title),
                 style = MaterialTheme.typography.headlineMedium,
@@ -132,6 +133,7 @@ internal fun PitchSessionSummaryScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(stringResource(R.string.pitch_summary_back))
+            }
             }
         }
     }

@@ -86,13 +86,22 @@ private const val F0_MAXIMUM_GAP_SECONDS = 0.35
 
 @Composable
 internal fun DisabledAudioPlayerButton(modifier: Modifier = Modifier) {
+    val darkTheme = isSystemInDarkTheme()
     FilledIconButton(
         onClick = {},
         enabled = false,
         modifier = modifier.size(52.dp),
         colors = IconButtonDefaults.filledIconButtonColors(
-            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            disabledContainerColor = if (darkTheme) {
+                Color(0xFF20344F)
+            } else {
+                Color(0xFFD6E6FF)
+            },
+            disabledContentColor = if (darkTheme) {
+                Color(0xFF8C98AA)
+            } else {
+                Color(0xFF7C8799)
+            },
         ),
     ) {
         Icon(
@@ -676,54 +685,52 @@ private fun BasicWaveform(
     ) {
         val duration = audio.durationSeconds.coerceAtLeast(0.001)
         val viewportStart = positionSeconds - windowSeconds / 2.0
+        val viewportEnd = viewportStart + windowSeconds
         val centerY = size.height / 2f
         val targetBarSpacingPx = 3.dp.toPx()
-        val barCount = (size.width / targetBarSpacingPx)
+        val targetBarCount = (size.width / targetBarSpacingPx)
             .roundToInt()
             .coerceAtLeast(1)
-        val secondsPerBar = windowSeconds / barCount
+        val lastBucket = waveform.lastIndex
+        val bucketStep = (waveform.size.toFloat() / targetBarCount)
+            .roundToInt()
+            .coerceAtLeast(1)
+        val firstCandidate = floor(viewportStart / duration * lastBucket)
+            .toInt()
+            .coerceIn(0, lastBucket)
+        val firstBucket = firstCandidate / bucketStep * bucketStep
+        val lastCandidate = ceil(viewportEnd / duration * lastBucket)
+            .toInt()
+            .coerceIn(0, lastBucket)
+        val lastBucketToDraw = (
+            lastCandidate / bucketStep * bucketStep + bucketStep
+        ).coerceAtMost(lastBucket)
 
-        for (bar in 0..barCount) {
-            val time = viewportStart + bar * secondsPerBar
-            if (time < 0.0 || time > duration) continue
+        var bucket = firstBucket
+        while (bucket <= lastBucketToDraw) {
+            val time = if (lastBucket == 0) 0.0 else bucket.toDouble() / lastBucket * duration
             val x = ((time - viewportStart) / windowSeconds).toFloat() * size.width
-            val amplitude = waveformAmplitudeAt(waveform, duration, time)
-            val score = segmentScores.firstOrNull { segment ->
-                time >= segment.startSeconds && time < segment.endSeconds
-            }?.score
-            val barColor = score?.let(::feminineScoreColor) ?: Color(0xFF9CA3AF)
-            val halfHeight = if (score == null) {
-                1.2.dp.toPx()
-            } else {
-                (sqrt(amplitude) * size.height * 0.48f)
-                    .coerceAtLeast(2.5.dp.toPx())
+            if (x >= -targetBarSpacingPx && x <= size.width + targetBarSpacingPx) {
+                val amplitude = waveform[bucket].coerceIn(0f, 1f)
+                val score = segmentScores.firstOrNull { segment ->
+                    time >= segment.startSeconds && time < segment.endSeconds
+                }?.score
+                val barColor = score?.let(::feminineScoreColor) ?: Color(0xFF9CA3AF)
+                val halfHeight = if (score == null) {
+                    1.2.dp.toPx()
+                } else {
+                    (sqrt(amplitude) * size.height * 0.48f)
+                        .coerceAtLeast(2.5.dp.toPx())
+                }
+                drawLine(
+                    color = barColor.copy(alpha = if (score == null) 0.42f else 1f),
+                    start = Offset(x, centerY - halfHeight),
+                    end = Offset(x, centerY + halfHeight),
+                    strokeWidth = 2.dp.toPx(),
+                    cap = StrokeCap.Round,
+                )
             }
-            drawLine(
-                color = barColor.copy(alpha = if (score == null) 0.42f else 1f),
-                start = Offset(x, centerY - halfHeight),
-                end = Offset(x, centerY + halfHeight),
-                strokeWidth = 2.dp.toPx(),
-                cap = StrokeCap.Round,
-            )
+            bucket += bucketStep
         }
     }
-}
-
-private fun waveformAmplitudeAt(
-    waveform: FloatArray,
-    durationSeconds: Double,
-    seconds: Double,
-): Float {
-    if (waveform.isEmpty()) return 0f
-    if (waveform.size == 1) return waveform[0].coerceIn(0f, 1f)
-
-    val position = (seconds.coerceIn(0.0, durationSeconds) / durationSeconds * waveform.lastIndex)
-        .coerceIn(0.0, waveform.lastIndex.toDouble())
-    val lowerIndex = floor(position).toInt().coerceIn(0, waveform.lastIndex)
-    val upperIndex = ceil(position).toInt().coerceIn(lowerIndex, waveform.lastIndex)
-    val fraction = (position - lowerIndex).toFloat()
-    return (
-        waveform[lowerIndex] * (1f - fraction) +
-            waveform[upperIndex] * fraction
-        ).coerceIn(0f, 1f)
 }
