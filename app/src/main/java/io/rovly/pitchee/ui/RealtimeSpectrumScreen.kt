@@ -38,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -50,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -267,6 +269,7 @@ private fun SpectrumToolbarContent(
             iconRes = R.drawable.ic_rewind,
             contentDescription = stringResource(R.string.spectrum_rewind_5),
             onClick = onRewind,
+            animateOnClick = true,
         )
         AnimatedContent(
             targetState = if (mode == SpectrumMode.PREPARING) null else centerIcon,
@@ -314,14 +317,25 @@ private fun ControlIconButton(
     iconRes: Int,
     contentDescription: String,
     onClick: () -> Unit,
+    animateOnClick: Boolean = false,
 ) {
+    var spinCount by remember { mutableIntStateOf(0) }
+    val rotation by animateFloatAsState(
+        targetValue = if (animateOnClick) spinCount * -360f else 0f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = 260f),
+        label = "spectrum-seek-rotation",
+    )
     FilledIconButton(
-        onClick = onClick,
+        onClick = {
+            if (animateOnClick) spinCount++
+            onClick()
+        },
         modifier = Modifier.size(48.dp),
     ) {
         Icon(
             painter = painterResource(iconRes),
             contentDescription = contentDescription,
+            modifier = Modifier.graphicsLayer { rotationZ = rotation },
         )
     }
 }
@@ -335,8 +349,16 @@ private fun SpectrumChart(
     modifier: Modifier = Modifier,
 ) {
     val latestTimestamp = frames.lastOrNull()?.timestampSeconds ?: 0.0
+    val rawWindowStart = replayWindowStartSeconds ?: (latestTimestamp - SPECTRUM_WINDOW_SECONDS)
     val windowEnd = replayWindowEndSeconds ?: latestTimestamp
-    val windowStart = replayWindowStartSeconds ?: (windowEnd - SPECTRUM_WINDOW_SECONDS)
+    val windowStart = if (
+        replayWindowStartSeconds != null &&
+        windowEnd - rawWindowStart < SPECTRUM_WINDOW_SECONDS
+    ) {
+        windowEnd - SPECTRUM_WINDOW_SECONDS
+    } else {
+        rawWindowStart
+    }
     val targetPosition = playbackPositionSeconds ?: windowStart
     val animatedPosition by animateFloatAsState(
         targetValue = targetPosition.toFloat(),

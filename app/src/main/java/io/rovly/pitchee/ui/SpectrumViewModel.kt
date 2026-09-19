@@ -82,7 +82,6 @@ class SpectrumViewModel(
 
     fun rewindFiveSeconds() {
         if (mutableState.value.mode == SpectrumMode.IDLE) return
-        if (totalSamples < (WINDOW_SECONDS * SAMPLE_RATE).toLong()) return
         if (mutableState.value.mode == SpectrumMode.REPLAYING &&
             replayPageDepth >= MAX_REPLAY_WINDOWS
         ) {
