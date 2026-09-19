@@ -65,7 +65,10 @@ class SpectrumViewModel(
     private var spectrum: PitcheeSpectrum? = null
     private var audioTrack: AudioTrack? = null
     private val sessionLock = Any()
+    @Volatile
     private var playbackGeneration = 0
+    @Volatile
+    private var liveGeneration = 0
     private var lastControlAtMillis = 0L
     private val frameBuffer = ArrayDeque<SpectrumFramePoint>()
     private val audioRing = FloatArray((SAMPLE_RATE * HISTORY_SECONDS).toInt())
@@ -162,6 +165,7 @@ class SpectrumViewModel(
         stopLiveCapture()
         stopPlaybackInternal()
         replayTailSample = 0L
+        val generation = ++liveGeneration
         mutableState.update {
             it.copy(
                 mode = SpectrumMode.PREPARING,
@@ -182,14 +186,15 @@ class SpectrumViewModel(
                 ).also { spectrum = it }
                 recorder.stop()
                 recorder.start()
+                if (generation != liveGeneration) return@launch
                 mutableState.update { it.copy(mode = SpectrumMode.ANALYZING) }
                 val buffer = FloatArray(READ_SAMPLES)
-                while (isActive) {
+                while (isActive && generation == liveGeneration) {
                     val count = recorder.read(buffer)
                     if (count <= 0) continue
                     val chunk = if (count == buffer.size) buffer.copyOf() else buffer.copyOf(count)
                     synchronized(sessionLock) {
-                        if (isActive) {
+                        if (isActive && generation == liveGeneration) {
                             appendAudio(chunk)
                             stream.process(chunk) {
                                     timestampSeconds,
@@ -225,8 +230,10 @@ class SpectrumViewModel(
                                 ) {
                                     lastPublishedTimestamp = point.timestampSeconds
                                     val frames = frameBuffer.toList()
-                                    mutableState.update { current ->
-                                        current.copy(frames = frames, error = null)
+                                    if (generation == liveGeneration) {
+                                        mutableState.update { current ->
+                                            current.copy(frames = frames, error = null)
+                                        }
                                     }
                                 }
                             }
@@ -236,11 +243,13 @@ class SpectrumViewModel(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                mutableState.update {
-                    it.copy(
-                        mode = SpectrumMode.ANALYSIS_PAUSED,
-                        error = error.message,
-                    )
+                if (generation == liveGeneration) {
+                    mutableState.update {
+                        it.copy(
+                            mode = SpectrumMode.ANALYSIS_PAUSED,
+                            error = error.message,
+                        )
+                    }
                 }
             }
         }
@@ -266,6 +275,7 @@ class SpectrumViewModel(
 
     private fun stopLiveCapture() {
         synchronized(sessionLock) {
+            liveGeneration++
             liveJob?.cancel()
             liveJob = null
             recorder.stop()
@@ -285,13 +295,14 @@ class SpectrumViewModel(
             resumeAnalysis()
             return
         }
+        val generation = ++playbackGeneration
         updateReplayState(
             positionSample = startSample,
             windowStartSample = startSample,
             windowEndSample = endSample,
             tailSample = replayTailSample,
+            generation = generation,
         )
-        val generation = ++playbackGeneration
         playbackJob = viewModelScope.launch(Dispatchers.Default) {
             var track: AudioTrack? = null
             var reachedTail = false
@@ -306,11 +317,13 @@ class SpectrumViewModel(
                 var windowStart = startSample
                 var windowEnd = endSample
                 while (isActive && windowStart < replayTailSample) {
+                    if (generation != playbackGeneration) break
                     updateReplayState(
                         positionSample = windowStart,
                         windowStartSample = windowStart,
                         windowEndSample = windowEnd,
                         tailSample = replayTailSample,
+                        generation = generation,
                     )
                     var position = windowStart
                     while (isActive && position < windowEnd) {
@@ -327,7 +340,8 @@ class SpectrumViewModel(
                         )
                         check(written >= 0) { "音频回放失败：$written" }
                         position += written
-                        updateReplayPosition(position)
+                        if (generation != playbackGeneration) break
+                        updateReplayPosition(position, generation)
                     }
 
                     if (windowEnd >= replayTailSample - END_EPSILON_SAMPLES) {
@@ -343,7 +357,9 @@ class SpectrumViewModel(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                mutableState.update { it.copy(error = error.message) }
+                if (generation == playbackGeneration) {
+                    mutableState.update { it.copy(error = error.message) }
+                }
             } finally {
                 runCatching { track?.pause() }
                 track?.flush()
@@ -355,7 +371,11 @@ class SpectrumViewModel(
         }
     }
 
-    private fun updateReplayPosition(positionSample: Long) {
+    private fun updateReplayPosition(
+        positionSample: Long,
+        generation: Int,
+    ) {
+        if (generation != playbackGeneration) return
         mutableState.update {
             it.copy(
                 mode = SpectrumMode.REPLAYING,
@@ -369,7 +389,9 @@ class SpectrumViewModel(
         windowStartSample: Long,
         windowEndSample: Long,
         tailSample: Long,
+        generation: Int? = null,
     ) {
+        if (generation != null && generation != playbackGeneration) return
         mutableState.update {
             it.copy(
                 mode = SpectrumMode.REPLAYING,
