@@ -88,6 +88,8 @@
     <string name="spectrum_pause">Pause</string>
     <string name="spectrum_resume_analysis">Resume analysis</string>
     <string name="spectrum_rewind_5">Rewind 5 seconds</string>
+    <string name="spectrum_rewind_seconds">Rewind %1$.0f seconds</string>
+    <string name="spectrum_last_page">Last page</string>
     <string name="spectrum_no_signal">Waiting for sound</string>
     <string name="analysis_inference_title">Analyze your voice</string>
     <string name="click_to_record">Tap to start recording</string>

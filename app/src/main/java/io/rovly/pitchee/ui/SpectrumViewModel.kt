@@ -52,6 +52,11 @@ data class SpectrumUiState(
     val error: String? = null,
 )
 
+data class SpectrumRewindFeedback(
+    val secondsFromLatest: Double,
+    val isLastPage: Boolean,
+)
+
 class SpectrumViewModel(
     private val recorder: RealtimeF0AudioRecorder,
 ) : ViewModel() {
@@ -61,7 +66,6 @@ class SpectrumViewModel(
     private var audioTrack: AudioTrack? = null
     private val sessionLock = Any()
     private var playbackGeneration = 0
-    private var replayPageDepth = 0
     private var lastControlAtMillis = 0L
     private val frameBuffer = ArrayDeque<SpectrumFramePoint>()
     private val audioRing = FloatArray((SAMPLE_RATE * HISTORY_SECONDS).toInt())
@@ -80,14 +84,9 @@ class SpectrumViewModel(
         startAnalysisInternal()
     }
 
-    fun rewindFiveSeconds() {
-        if (mutableState.value.mode == SpectrumMode.IDLE) return
-        if (mutableState.value.mode == SpectrumMode.REPLAYING &&
-            replayPageDepth >= MAX_REPLAY_WINDOWS
-        ) {
-            return
-        }
-        if (!acceptControlEvent()) return
+    fun rewindFiveSeconds(): SpectrumRewindFeedback? {
+        if (mutableState.value.mode == SpectrumMode.IDLE) return null
+        if (!acceptControlEvent()) return null
         stopLiveCapture()
         stopPlaybackInternal()
 
@@ -99,12 +98,6 @@ class SpectrumViewModel(
         if (replayTailSample <= 0L) {
             replayTailSample = totalSamples
         }
-        replayPageDepth = if (mutableState.value.mode == SpectrumMode.REPLAYING) {
-            replayPageDepth + 1
-        } else {
-            1
-        }
-
         val targetEnd = if (currentWindowStart != null) {
             currentWindowStart
         } else {
@@ -116,12 +109,16 @@ class SpectrumViewModel(
         )
         if (targetEnd - targetStart <= END_EPSILON_SECONDS) {
             startAnalysisInternal()
-            return
+            return null
         }
 
         startReplayWindow(
             startSeconds = targetStart,
             endSeconds = min(targetEnd, liveTail),
+        )
+        return SpectrumRewindFeedback(
+            secondsFromLatest = (liveTail - targetStart).coerceAtLeast(0.0),
+            isLastPage = targetStart <= oldestSample().toDouble() / SAMPLE_RATE + END_EPSILON_SECONDS,
         )
     }
 
@@ -163,7 +160,6 @@ class SpectrumViewModel(
         }
         stopPlaybackInternal()
         replayTailSample = 0L
-        replayPageDepth = 0
         mutableState.update {
             it.copy(
                 mode = SpectrumMode.PREPARING,
@@ -473,7 +469,6 @@ class SpectrumViewModel(
         private const val END_EPSILON_SECONDS = 0.01
         private const val END_EPSILON_SAMPLES = 160L
         private const val CONTROL_DEBOUNCE_MILLIS = 300L
-        private const val MAX_REPLAY_WINDOWS = 3
         // 30 seconds at 16 kHz / 256 samples is about 1875 frames.
         private const val MAX_FRAMES = 1880
 

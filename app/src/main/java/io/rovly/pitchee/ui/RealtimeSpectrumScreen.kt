@@ -33,10 +33,14 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -76,6 +80,10 @@ internal fun RealtimeSpectrumScreen() {
     val factory = remember { SpectrumViewModel.factory(context.applicationContext) }
     val viewModel: SpectrumViewModel = viewModel(factory = factory)
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val lastPageMessage = stringResource(R.string.spectrum_last_page)
+    val rewindMessageFormat = stringResource(R.string.spectrum_rewind_seconds)
+    var rewindFeedback by remember { mutableStateOf<SpectrumRewindFeedback?>(null) }
     var permissionDenied by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -106,6 +114,25 @@ internal fun RealtimeSpectrumScreen() {
         }
     }
 
+    fun rewind() {
+        rewindFeedback = viewModel.rewindFiveSeconds()
+    }
+
+    LaunchedEffect(rewindFeedback) {
+        val feedback = rewindFeedback ?: return@LaunchedEffect
+        val message = if (feedback.isLastPage) {
+            lastPageMessage
+        } else {
+            rewindMessageFormat.format(feedback.secondsFromLatest)
+        }
+        snackbarHostState.currentSnackbarData?.dismiss()
+        snackbarHostState.showSnackbar(
+            message = message,
+            duration = SnackbarDuration.Short,
+        )
+        rewindFeedback = null
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -114,7 +141,6 @@ internal fun RealtimeSpectrumScreen() {
         SpectrumChart(
             frames = state.frames,
             playbackPositionSeconds = state.playbackPositionSeconds,
-            replayWindowStartSeconds = state.replayWindowStartSeconds,
             replayWindowEndSeconds = state.replayWindowEndSeconds,
             modifier = Modifier.fillMaxSize(),
         )
@@ -176,9 +202,16 @@ internal fun RealtimeSpectrumScreen() {
             SpectrumControls(
                 mode = state.mode,
                 onToggle = ::toggleAnalysis,
-                onRewind = viewModel::rewindFiveSeconds,
+                onRewind = ::rewind,
             )
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 104.dp),
+        )
     }
 }
 
@@ -344,21 +377,18 @@ private fun ControlIconButton(
 private fun SpectrumChart(
     frames: List<SpectrumFramePoint>,
     playbackPositionSeconds: Double?,
-    replayWindowStartSeconds: Double?,
     replayWindowEndSeconds: Double?,
     modifier: Modifier = Modifier,
 ) {
     val latestTimestamp = frames.lastOrNull()?.timestampSeconds ?: 0.0
-    val rawWindowStart = replayWindowStartSeconds ?: (latestTimestamp - SPECTRUM_WINDOW_SECONDS)
-    val windowEnd = replayWindowEndSeconds ?: latestTimestamp
-    val windowStart = if (
-        replayWindowStartSeconds != null &&
-        windowEnd - rawWindowStart < SPECTRUM_WINDOW_SECONDS
-    ) {
-        windowEnd - SPECTRUM_WINDOW_SECONDS
-    } else {
-        rawWindowStart
-    }
+    val targetWindowEnd = replayWindowEndSeconds ?: latestTimestamp
+    val animatedWindowEnd by animateFloatAsState(
+        targetValue = targetWindowEnd.toFloat(),
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = 220f),
+        label = "spectrum-window",
+    )
+    val windowEnd = animatedWindowEnd.toDouble()
+    val windowStart = windowEnd - SPECTRUM_WINDOW_SECONDS
     val targetPosition = playbackPositionSeconds ?: windowStart
     val animatedPosition by animateFloatAsState(
         targetValue = targetPosition.toFloat(),
