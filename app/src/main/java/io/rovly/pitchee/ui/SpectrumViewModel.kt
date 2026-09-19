@@ -59,6 +59,8 @@ class SpectrumViewModel(
     private var playbackJob: Job? = null
     private var spectrum: PitcheeSpectrum? = null
     private var audioTrack: AudioTrack? = null
+    private val sessionLock = Any()
+    private var playbackGeneration = 0
     private val frameBuffer = ArrayDeque<SpectrumFramePoint>()
     private val audioRing = FloatArray((SAMPLE_RATE * HISTORY_SECONDS).toInt())
     private var ringWriteIndex = 0
@@ -124,18 +126,18 @@ class SpectrumViewModel(
     }
 
     private fun resetSession() {
-        liveJob?.cancel()
-        liveJob = null
+        stopLiveCapture()
         stopPlaybackInternal()
-        recorder.stop()
         spectrum?.close()
         spectrum = null
-        frameBuffer.clear()
-        audioRing.fill(0f)
-        ringWriteIndex = 0
-        totalSamples = 0L
-        replayTailSample = 0L
-        lastPublishedTimestamp = Double.NEGATIVE_INFINITY
+        synchronized(sessionLock) {
+            frameBuffer.clear()
+            audioRing.fill(0f)
+            ringWriteIndex = 0
+            totalSamples = 0L
+            replayTailSample = 0L
+            lastPublishedTimestamp = Double.NEGATIVE_INFINITY
+        }
         mutableState.value = SpectrumUiState()
     }
 
@@ -172,43 +174,47 @@ class SpectrumViewModel(
                     val count = recorder.read(buffer)
                     if (count <= 0) continue
                     val chunk = if (count == buffer.size) buffer.copyOf() else buffer.copyOf(count)
-                    appendAudio(chunk)
-                    stream.process(chunk) {
-                            timestampSeconds,
-                            magnitudes,
-                            firstBinIndex,
-                            binHz,
-                            _,
-                            centroidHz,
-                            rolloffHz,
-                            flatness,
-                        ->
-                        val point = SpectrumFramePoint(
-                            timestampSeconds = timestampSeconds,
-                            magnitudes = magnitudes,
-                            firstBinIndex = firstBinIndex.toInt(),
-                            binHz = binHz,
-                            centroidHz = centroidHz,
-                            rolloffHz = rolloffHz,
-                            flatness = flatness,
-                        )
-                        frameBuffer.addLast(point)
-                        while (frameBuffer.isNotEmpty() &&
-                            frameBuffer.first().timestampSeconds <
-                            point.timestampSeconds - HISTORY_SECONDS
-                        ) {
-                            frameBuffer.removeFirst()
-                        }
-                        while (frameBuffer.size > MAX_FRAMES) {
-                            frameBuffer.removeFirst()
-                        }
-                        if (point.timestampSeconds - lastPublishedTimestamp >=
-                            PUBLISH_INTERVAL_SECONDS
-                        ) {
-                            lastPublishedTimestamp = point.timestampSeconds
-                            val frames = frameBuffer.toList()
-                            mutableState.update { current ->
-                                current.copy(frames = frames, error = null)
+                    synchronized(sessionLock) {
+                        if (isActive) {
+                            appendAudio(chunk)
+                            stream.process(chunk) {
+                                    timestampSeconds,
+                                    magnitudes,
+                                    firstBinIndex,
+                                    binHz,
+                                    _,
+                                    centroidHz,
+                                    rolloffHz,
+                                    flatness,
+                                ->
+                                val point = SpectrumFramePoint(
+                                    timestampSeconds = timestampSeconds,
+                                    magnitudes = magnitudes,
+                                    firstBinIndex = firstBinIndex.toInt(),
+                                    binHz = binHz,
+                                    centroidHz = centroidHz,
+                                    rolloffHz = rolloffHz,
+                                    flatness = flatness,
+                                )
+                                frameBuffer.addLast(point)
+                                while (frameBuffer.isNotEmpty() &&
+                                    frameBuffer.first().timestampSeconds <
+                                    point.timestampSeconds - HISTORY_SECONDS
+                                ) {
+                                    frameBuffer.removeFirst()
+                                }
+                                while (frameBuffer.size > MAX_FRAMES) {
+                                    frameBuffer.removeFirst()
+                                }
+                                if (point.timestampSeconds - lastPublishedTimestamp >=
+                                    PUBLISH_INTERVAL_SECONDS
+                                ) {
+                                    lastPublishedTimestamp = point.timestampSeconds
+                                    val frames = frameBuffer.toList()
+                                    mutableState.update { current ->
+                                        current.copy(frames = frames, error = null)
+                                    }
+                                }
                             }
                         }
                     }
@@ -245,9 +251,11 @@ class SpectrumViewModel(
     }
 
     private fun stopLiveCapture() {
-        liveJob?.cancel()
-        liveJob = null
-        recorder.stop()
+        synchronized(sessionLock) {
+            liveJob?.cancel()
+            liveJob = null
+            recorder.stop()
+        }
     }
 
     private fun startReplayWindow(
@@ -270,11 +278,16 @@ class SpectrumViewModel(
             windowEndSample = endSample,
             tailSample = replayTailSample,
         )
+        val generation = ++playbackGeneration
         playbackJob = viewModelScope.launch(Dispatchers.Default) {
             var track: AudioTrack? = null
             var reachedTail = false
             try {
+                if (!isActive || generation != playbackGeneration) return@launch
                 track = createAudioTrack()
+                if (!isActive || generation != playbackGeneration) {
+                    return@launch
+                }
                 audioTrack = track
                 track.play()
                 var windowStart = startSample
@@ -323,9 +336,9 @@ class SpectrumViewModel(
                 track?.flush()
                 track?.release()
                 if (audioTrack === track) audioTrack = null
-                playbackJob = null
+                if (generation == playbackGeneration) playbackJob = null
             }
-            if (reachedTail) resumeAnalysis()
+            if (reachedTail && generation == playbackGeneration) resumeAnalysis()
         }
     }
 
@@ -356,15 +369,11 @@ class SpectrumViewModel(
     }
 
     private fun stopPlaybackInternal() {
+        playbackGeneration++
         val job = playbackJob
         playbackJob = null
         job?.cancel()
-        val track = audioTrack
         audioTrack = null
-        if (track != null) {
-            runCatching { track.pause() }
-            track.flush()
-        }
     }
 
     private fun appendAudio(samples: FloatArray) {
