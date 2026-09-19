@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import space.pitchee.core.PitcheeSpectrum
+import java.util.ArrayDeque
 
 data class SpectrumFramePoint(
     val timestampSeconds: Double,
@@ -44,11 +45,15 @@ class SpectrumViewModel(
     private val recorder: RealtimeF0AudioRecorder,
 ) : ViewModel() {
     private var analysisJob: Job? = null
+    private val frameBuffer = ArrayDeque<SpectrumFramePoint>()
+    private var lastPublishedTimestamp = Double.NEGATIVE_INFINITY
     private val mutableState = MutableStateFlow(SpectrumUiState())
     val state: StateFlow<SpectrumUiState> = mutableState.asStateFlow()
 
     fun start() {
         if (analysisJob?.isActive == true) return
+        frameBuffer.clear()
+        lastPublishedTimestamp = Double.NEGATIVE_INFINITY
         mutableState.value = SpectrumUiState(preparing = true)
         analysisJob = viewModelScope.launch(Dispatchers.Default) {
             var spectrum: PitcheeSpectrum? = null
@@ -88,11 +93,24 @@ class SpectrumViewModel(
                             rolloffHz = rolloffHz,
                             flatness = flatness,
                         )
-                        mutableState.update { current ->
-                            current.copy(
-                                frames = (current.frames + point).takeLast(MAX_FRAMES),
-                                error = null,
-                            )
+                        frameBuffer.addLast(point)
+                        while (frameBuffer.isNotEmpty() &&
+                            frameBuffer.first().timestampSeconds <
+                            point.timestampSeconds - WINDOW_SECONDS
+                        ) {
+                            frameBuffer.removeFirst()
+                        }
+                        while (frameBuffer.size > MAX_FRAMES) {
+                            frameBuffer.removeFirst()
+                        }
+                        if (point.timestampSeconds - lastPublishedTimestamp >=
+                            PUBLISH_INTERVAL_SECONDS
+                        ) {
+                            lastPublishedTimestamp = point.timestampSeconds
+                            val frames = frameBuffer.toList()
+                            mutableState.update { current ->
+                                current.copy(frames = frames, error = null)
+                            }
                         }
                     }
                 }
@@ -136,7 +154,10 @@ class SpectrumViewModel(
         private const val MIN_HZ = 40
         private const val MAX_HZ = 8000
         private const val READ_SAMPLES = 512
-        private const val MAX_FRAMES = 240
+        private const val WINDOW_SECONDS = 3.0
+        private const val PUBLISH_INTERVAL_SECONDS = 1.0 / 30.0
+        // 3 seconds at 16 kHz / 256 samples is about 188 frames.
+        private const val MAX_FRAMES = 192
 
         fun factory(context: Context): ViewModelProvider.Factory = viewModelFactory {
             initializer {

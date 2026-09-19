@@ -318,7 +318,7 @@ private fun SpectrumChart(
 
 private fun createSpectrumBitmap(frames: List<SpectrumFramePoint>): ImageBitmap? {
     if (frames.isEmpty()) return null
-    val width = frames.size
+    val width = SPECTRUM_BITMAP_WIDTH
     val height = SPECTRUM_BITMAP_HEIGHT
     val pixels = IntArray(width * height)
     val minHz = (frames.first().firstBinIndex * frames.first().binHz).coerceAtLeast(1f)
@@ -327,19 +327,35 @@ private fun createSpectrumBitmap(frames: List<SpectrumFramePoint>): ImageBitmap?
             frames.first().binHz
         ).coerceAtLeast(minHz + 1f)
     val logRange = log10(maxHz / minHz)
+    val firstTimestamp = frames.first().timestampSeconds
+    val latestTimestamp = frames.last().timestampSeconds
+    val visibleStart = latestTimestamp - SPECTRUM_WINDOW_SECONDS
+    val frameSpan = (latestTimestamp - firstTimestamp).coerceAtLeast(0.001)
+    val frequencyBins = FloatArray(height) { y ->
+        val frequencyRatio = 1f - y.toFloat() / (height - 1).coerceAtLeast(1)
+        minHz * 10.0.pow(frequencyRatio.toDouble() * logRange).toFloat()
+    }
 
-    frames.forEachIndexed { x, frame ->
+    for (x in 0 until width) {
+        val timestamp = visibleStart + x.toDouble() / (width - 1) * SPECTRUM_WINDOW_SECONDS
+        val frameIndex = ((timestamp - firstTimestamp) / frameSpan * frames.lastIndex)
+            .roundToInt()
+            .coerceIn(0, frames.lastIndex)
+        val frame = frames[frameIndex]
+        val hasFrame = timestamp >= firstTimestamp && timestamp <= latestTimestamp
         val magnitudeLastIndex = frame.magnitudes.lastIndex
         for (y in 0 until height) {
-            val frequencyRatio = 1f - y.toFloat() / (height - 1).coerceAtLeast(1)
-            val frequencyHz = minHz * 10.0.pow(frequencyRatio.toDouble() * logRange).toFloat()
-            val magnitudeIndex = (frequencyHz / frame.binHz - frame.firstBinIndex)
+            val magnitudeIndex = (frequencyBins[y] / frame.binHz - frame.firstBinIndex)
                 .roundToInt()
                 .coerceIn(0, magnitudeLastIndex)
             val decibels = frame.magnitudes[magnitudeIndex]
             val normalized = ((decibels - SPECTRUM_MIN_DB) / SPECTRUM_DB_RANGE)
                 .coerceIn(0f, 1f)
-            pixels[y * width + x] = spectrumColor(normalized).toArgb()
+            pixels[y * width + x] = if (hasFrame) {
+                spectrumColor(normalized).toArgb()
+            } else {
+                SpectrumLow.toArgb()
+            }
         }
     }
 
@@ -368,6 +384,7 @@ private val SpectrumCyan = Color(0xFF19B9C8)
 private val SpectrumPink = Color(0xFFE75480)
 private val SpectrumHigh = Color(0xFFFFD9A0)
 private const val SPECTRUM_WINDOW_SECONDS = 3.0
+private const val SPECTRUM_BITMAP_WIDTH = 192
 private const val SPECTRUM_BITMAP_HEIGHT = 72
 private const val SPECTRUM_MIN_DB = -90f
 private const val SPECTRUM_DB_RANGE = 75f
