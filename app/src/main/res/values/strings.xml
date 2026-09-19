@@ -81,11 +81,14 @@
     <string name="pitch_stop_monitoring">停止监测</string>
     <string name="spectrum_title">频谱</string>
     <string name="spectrum_subtitle">实时声音频率分布</string>
-    <string name="spectrum_peak">峰值频率</string>
     <string name="spectrum_preparing">正在准备频谱分析</string>
     <string name="spectrum_start_failed">频谱分析启动失败</string>
     <string name="spectrum_start_monitoring">开始频谱监测</string>
     <string name="spectrum_stop_monitoring">停止频谱监测</string>
+    <string name="spectrum_pause">暂停</string>
+    <string name="spectrum_resume">恢复</string>
+    <string name="spectrum_rewind_5">后退 5 秒</string>
+    <string name="spectrum_forward_5">快进 5 秒</string>
     <string name="spectrum_no_signal">等待声音输入</string>
     <string name="analysis_inference_title">推理你的声音</string>
     <string name="click_to_record">点击开始录制</string>

@@ -5,24 +5,32 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -34,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
@@ -75,26 +84,22 @@ internal fun RealtimeSpectrumScreen() {
         onDispose { viewModel.stop() }
     }
 
-    fun toggleMonitoring() {
-        if (state.running || state.preparing) {
-            viewModel.stop()
-            return
-        }
-        val granted = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.RECORD_AUDIO,
-        ) == PackageManager.PERMISSION_GRANTED
-        if (granted) {
-            permissionDenied = false
-            viewModel.start()
+    fun toggleAnalysis() {
+        if (state.mode == SpectrumMode.IDLE) {
+            val granted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.RECORD_AUDIO,
+            ) == PackageManager.PERMISSION_GRANTED
+            if (granted) {
+                permissionDenied = false
+                viewModel.start()
+            } else {
+                permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
         } else {
-            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            viewModel.togglePlaybackOrAnalysis()
         }
     }
-
-    val currentPeakHz = state.current
-        ?.takeIf { it.peakDb >= PEAK_DISPLAY_THRESHOLD_DB }
-        ?.peakHz
 
     Box(
         modifier = Modifier
@@ -103,12 +108,12 @@ internal fun RealtimeSpectrumScreen() {
     ) {
         SpectrumChart(
             frames = state.frames,
+            playbackPositionSeconds = state.playbackPositionSeconds,
             modifier = Modifier.fillMaxSize(),
         )
 
         Column(
             modifier = Modifier
-                .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 24.dp),
         ) {
             Text(
@@ -122,27 +127,11 @@ internal fun RealtimeSpectrumScreen() {
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.height(16.dp))
-            Text(
-                text = currentPeakHz?.let(::formatHz) ?: "--",
-                style = MaterialTheme.typography.displayMedium,
-                fontWeight = FontWeight.Black,
-                color = if (currentPeakHz == null) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.primary
-                },
-            )
-            Text(
-                text = stringResource(R.string.spectrum_peak),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
 
         if (state.frames.isEmpty()) {
             Text(
-                text = if (state.preparing) {
+                text = if (state.mode == SpectrumMode.PREPARING) {
                     stringResource(R.string.spectrum_preparing)
                 } else {
                     stringResource(R.string.spectrum_no_signal)
@@ -161,8 +150,7 @@ internal fun RealtimeSpectrumScreen() {
         ) {
             state.error?.let { error ->
                 Text(
-                    text = error.takeIf { it.isNotBlank() }
-                        ?: stringResource(R.string.spectrum_start_failed),
+                    text = error,
                     modifier = Modifier.padding(bottom = 10.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
@@ -178,101 +166,194 @@ internal fun RealtimeSpectrumScreen() {
                     textAlign = TextAlign.End,
                 )
             }
+            SpectrumControls(
+                mode = state.mode,
+                onToggle = ::toggleAnalysis,
+                onRewind = viewModel::rewindFiveSeconds,
+                onForward = viewModel::forwardFiveSeconds,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SpectrumControls(
+    mode: SpectrumMode,
+    onToggle: () -> Unit,
+    onRewind: () -> Unit,
+    onForward: () -> Unit,
+) {
+    val showToolbar = mode != SpectrumMode.IDLE
+    AnimatedContent(
+        targetState = showToolbar,
+        transitionSpec = {
+            val animation = spring<Float>(dampingRatio = 0.78f, stiffness = 320f)
+            scaleIn(animation, initialScale = 0.72f) togetherWith
+                scaleOut(animation, targetScale = 0.72f)
+        },
+        label = "spectrum-controls",
+    ) { expanded ->
+        if (expanded) {
+            SpectrumToolbar(
+                mode = mode,
+                onToggle = onToggle,
+                onRewind = onRewind,
+                onForward = onForward,
+            )
+        } else {
             FilledIconButton(
-                onClick = ::toggleMonitoring,
+                onClick = onToggle,
                 modifier = Modifier.size(72.dp),
             ) {
-                if (state.preparing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(28.dp),
-                        strokeWidth = 3.dp,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                    )
-                } else {
-                    Icon(
-                        painter = painterResource(
-                            if (state.running) R.drawable.ic_pause else R.drawable.ic_play,
-                        ),
-                        contentDescription = stringResource(
-                            if (state.running) {
-                                R.string.spectrum_stop_monitoring
-                            } else {
-                                R.string.spectrum_start_monitoring
-                            },
-                        ),
-                        modifier = Modifier.size(30.dp),
-                    )
-                }
+                Icon(
+                    painter = painterResource(R.drawable.ic_play),
+                    contentDescription = stringResource(R.string.spectrum_start_monitoring),
+                    modifier = Modifier.size(30.dp),
+                )
             }
         }
     }
 }
 
 @Composable
+private fun SpectrumToolbar(
+    mode: SpectrumMode,
+    onToggle: () -> Unit,
+    onRewind: () -> Unit,
+    onForward: () -> Unit,
+) {
+    val playing = mode == SpectrumMode.ANALYZING || mode == SpectrumMode.PLAYING
+    val centerIcon = if (playing) R.drawable.ic_pause else R.drawable.ic_play
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = 3.dp,
+        shadowElevation = 5.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ControlIconButton(
+                iconRes = R.drawable.ic_rewind,
+                contentDescription = stringResource(R.string.spectrum_rewind_5),
+                onClick = onRewind,
+            )
+            AnimatedContent(
+                targetState = if (mode == SpectrumMode.PREPARING) null else centerIcon,
+                transitionSpec = {
+                    scaleIn(
+                        spring(dampingRatio = 0.72f, stiffness = 360f),
+                        initialScale = 0.68f,
+                    ) togetherWith scaleOut(
+                        spring(dampingRatio = 0.72f, stiffness = 360f),
+                        targetScale = 0.68f,
+                    )
+                },
+                label = "spectrum-center-icon",
+            ) { icon ->
+                FilledIconButton(
+                    onClick = onToggle,
+                    enabled = mode != SpectrumMode.PREPARING,
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    if (icon == null) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.5.dp,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(icon),
+                            contentDescription = stringResource(
+                                if (playing) {
+                                    R.string.spectrum_pause
+                                } else {
+                                    R.string.spectrum_resume
+                                },
+                            ),
+                        )
+                    }
+                }
+            }
+            ControlIconButton(
+                iconRes = R.drawable.ic_forward,
+                contentDescription = stringResource(R.string.spectrum_forward_5),
+                onClick = onForward,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ControlIconButton(
+    iconRes: Int,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    FilledIconButton(
+        onClick = onClick,
+        modifier = Modifier.size(48.dp),
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = contentDescription,
+        )
+    }
+}
+
+@Composable
 private fun SpectrumChart(
     frames: List<SpectrumFramePoint>,
+    playbackPositionSeconds: Double?,
     modifier: Modifier = Modifier,
 ) {
-    val image = remember(frames) { createSpectrumBitmap(frames) }
-    val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
-    val peakColor = Color(0xFFFF7FA8)
+    val latestTimestamp = frames.lastOrNull()?.timestampSeconds ?: 0.0
+    val windowEnd = playbackPositionSeconds?.plus(SPECTRUM_WINDOW_SECONDS / 2.0)
+        ?: latestTimestamp
+    val windowStart = windowEnd - SPECTRUM_WINDOW_SECONDS
+    val targetPosition = playbackPositionSeconds ?: latestTimestamp
+    val animatedPosition by animateFloatAsState(
+        targetValue = targetPosition.toFloat(),
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = 220f),
+        label = "spectrum-playhead",
+    )
+    val image = remember(frames, windowStart, windowEnd) {
+        createSpectrumBitmap(frames, windowStart, windowEnd)
+    }
+    val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.62f)
     val surfaceColor = MaterialTheme.colorScheme.background
+    val playheadColor = MaterialTheme.colorScheme.primary
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        val plotTop = 196.dp
-        val plotBottom = maxHeight - 116.dp
         val plotLeft = 44.dp
-        val plotHeight = (plotBottom - plotTop).coerceAtLeast(1.dp)
+        val plotHeight = maxHeight
 
         fun yFraction(hz: Float): Float =
             (log10(hz / SPECTRUM_MIN_HZ) / log10(SPECTRUM_MAX_HZ / SPECTRUM_MIN_HZ))
                 .toFloat()
                 .coerceIn(0f, 1f)
 
-        fun yDp(hz: Float) = plotBottom - plotHeight * yFraction(hz)
+        fun yDp(hz: Float) = plotHeight - plotHeight * yFraction(hz)
 
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val plotTopPx = plotTop.toPx()
-            val plotBottomPx = plotBottom.toPx()
             val plotLeftPx = plotLeft.toPx()
-            val plotHeightPx = (plotBottomPx - plotTopPx).coerceAtLeast(1f)
-            fun yFor(hz: Float): Float = plotBottomPx - yFraction(hz) * plotHeightPx
+            val plotWidthPx = (size.width - plotLeftPx).coerceAtLeast(1f)
+            fun yFor(hz: Float): Float = size.height - yFraction(hz) * size.height
 
-            drawRect(
-                color = surfaceColor,
-                topLeft = Offset(plotLeftPx, plotTopPx),
-                size = Size(size.width - plotLeftPx, plotHeightPx),
-            )
-
-            if (image != null && frames.isNotEmpty()) {
-                val latestTimestamp = frames.last().timestampSeconds
-                val firstTimestamp = latestTimestamp - SPECTRUM_WINDOW_SECONDS
-                val firstFrameFraction = (
-                    (frames.first().timestampSeconds - firstTimestamp) /
-                        SPECTRUM_WINDOW_SECONDS
-                    ).toFloat().coerceIn(0f, 1f)
-                val lastFrameFraction = (
-                    (frames.last().timestampSeconds - firstTimestamp) /
-                        SPECTRUM_WINDOW_SECONDS
-                    ).toFloat().coerceIn(0f, 1f)
-                val destinationLeft = plotLeftPx + firstFrameFraction * (size.width - plotLeftPx)
-                val destinationRight = plotLeftPx + lastFrameFraction * (size.width - plotLeftPx)
+            if (image != null) {
                 drawImage(
                     image = image,
                     srcOffset = IntOffset.Zero,
                     srcSize = IntSize(image.width, image.height),
-                    dstOffset = IntOffset(
-                        destinationLeft.roundToInt(),
-                        plotTopPx.roundToInt(),
-                    ),
-                    dstSize = IntSize(
-                        (destinationRight - destinationLeft).roundToInt().coerceAtLeast(1),
-                        plotHeightPx.roundToInt(),
-                    ),
+                    dstOffset = IntOffset(plotLeftPx.roundToInt(), 0),
+                    dstSize = IntSize(plotWidthPx.roundToInt(), size.height.toInt()),
                     filterQuality = FilterQuality.Low,
                 )
             }
-
             FREQUENCY_GRID_HZ.forEach { hz ->
                 val y = yFor(hz)
                 drawLine(
@@ -282,22 +363,28 @@ private fun SpectrumChart(
                     strokeWidth = if (hz == 1000f) 1.6.dp.toPx() else 1.dp.toPx(),
                 )
             }
-
-            frames.lastOrNull()
-                ?.takeIf { it.peakDb >= PEAK_DISPLAY_THRESHOLD_DB }
-                ?.let { frame ->
-                val destinationRight = plotLeftPx + (size.width - plotLeftPx)
-                val peakY = yFor(frame.peakHz.coerceIn(SPECTRUM_MIN_HZ, SPECTRUM_MAX_HZ))
+            drawRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        surfaceColor,
+                        surfaceColor.copy(alpha = 0.82f),
+                        surfaceColor.copy(alpha = 0f),
+                    ),
+                    startY = 0f,
+                    endY = 188.dp.toPx(),
+                ),
+                topLeft = Offset(plotLeftPx, 0f),
+                size = Size(plotWidthPx, 188.dp.toPx()),
+            )
+            if (playbackPositionSeconds != null) {
+                val x = plotLeftPx + (
+                    (animatedPosition - windowStart) / SPECTRUM_WINDOW_SECONDS
+                    ).toFloat().coerceIn(0f, 1f) * plotWidthPx
                 drawLine(
-                    color = peakColor,
-                    start = Offset(plotLeftPx, peakY),
-                    end = Offset(destinationRight, peakY),
-                    strokeWidth = 1.5.dp.toPx(),
-                )
-                drawCircle(
-                    color = peakColor,
-                    radius = 5.dp.toPx(),
-                    center = Offset(destinationRight, peakY),
+                    color = playheadColor,
+                    start = Offset(x, 0f),
+                    end = Offset(x, size.height),
+                    strokeWidth = 2.dp.toPx(),
                 )
             }
         }
@@ -316,33 +403,43 @@ private fun SpectrumChart(
     }
 }
 
-private fun createSpectrumBitmap(frames: List<SpectrumFramePoint>): ImageBitmap? {
-    if (frames.isEmpty()) return null
+private fun createSpectrumBitmap(
+    frames: List<SpectrumFramePoint>,
+    windowStart: Double,
+    windowEnd: Double,
+): ImageBitmap? {
+    val visibleFrames = frames.filter {
+        it.timestampSeconds in windowStart..windowEnd
+    }
+    if (visibleFrames.isEmpty()) return null
     val width = SPECTRUM_BITMAP_WIDTH
     val height = SPECTRUM_BITMAP_HEIGHT
     val pixels = IntArray(width * height)
-    val minHz = (frames.first().firstBinIndex * frames.first().binHz).coerceAtLeast(1f)
+    val minHz = (visibleFrames.first().firstBinIndex * visibleFrames.first().binHz)
+        .coerceAtLeast(1f)
     val maxHz = (
-        (frames.first().firstBinIndex + frames.first().magnitudes.lastIndex) *
-            frames.first().binHz
+        (visibleFrames.first().firstBinIndex + visibleFrames.first().magnitudes.lastIndex) *
+            visibleFrames.first().binHz
         ).coerceAtLeast(minHz + 1f)
     val logRange = log10(maxHz / minHz)
-    val firstTimestamp = frames.first().timestampSeconds
-    val latestTimestamp = frames.last().timestampSeconds
-    val visibleStart = latestTimestamp - SPECTRUM_WINDOW_SECONDS
-    val frameSpan = (latestTimestamp - firstTimestamp).coerceAtLeast(0.001)
     val frequencyBins = FloatArray(height) { y ->
         val frequencyRatio = 1f - y.toFloat() / (height - 1).coerceAtLeast(1)
         minHz * 10.0.pow(frequencyRatio.toDouble() * logRange).toFloat()
     }
+    val firstTimestamp = visibleFrames.first().timestampSeconds
+    val lastTimestamp = visibleFrames.last().timestampSeconds
+    val frameSpan = (lastTimestamp - firstTimestamp).coerceAtLeast(0.001)
+    var frameIndex = 0
 
     for (x in 0 until width) {
-        val timestamp = visibleStart + x.toDouble() / (width - 1) * SPECTRUM_WINDOW_SECONDS
-        val frameIndex = ((timestamp - firstTimestamp) / frameSpan * frames.lastIndex)
-            .roundToInt()
-            .coerceIn(0, frames.lastIndex)
-        val frame = frames[frameIndex]
-        val hasFrame = timestamp >= firstTimestamp && timestamp <= latestTimestamp
+        val timestamp = windowStart + x.toDouble() / (width - 1) * SPECTRUM_WINDOW_SECONDS
+        while (frameIndex < visibleFrames.lastIndex &&
+            visibleFrames[frameIndex + 1].timestampSeconds <= timestamp
+        ) {
+            frameIndex++
+        }
+        val frame = visibleFrames[frameIndex]
+        val hasFrame = timestamp >= firstTimestamp && timestamp <= lastTimestamp
         val magnitudeLastIndex = frame.magnitudes.lastIndex
         for (y in 0 until height) {
             val magnitudeIndex = (frequencyBins[y] / frame.binHz - frame.firstBinIndex)
@@ -371,9 +468,6 @@ private fun spectrumColor(value: Float): Color = when {
     else -> lerp(SpectrumPink, SpectrumHigh, (value - 0.85f) / 0.15f)
 }
 
-private fun formatHz(hz: Float): String =
-    if (hz >= 1000f) "%.1f kHz".format(hz / 1000f) else "%.0f Hz".format(hz)
-
 private fun formatFrequencyAxis(hz: Float): String =
     if (hz >= 1000f) "%.0fk".format(hz / 1000f) else "%.0f".format(hz)
 
@@ -390,4 +484,3 @@ private const val SPECTRUM_MIN_DB = -90f
 private const val SPECTRUM_DB_RANGE = 75f
 private const val SPECTRUM_MIN_HZ = 40f
 private const val SPECTRUM_MAX_HZ = 8000f
-private const val PEAK_DISPLAY_THRESHOLD_DB = -65f
