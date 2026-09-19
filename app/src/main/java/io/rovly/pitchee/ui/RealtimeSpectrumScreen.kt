@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.scaleIn
@@ -37,6 +38,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -45,8 +47,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
@@ -128,6 +128,7 @@ internal fun RealtimeSpectrumScreen() {
             frames = state.frames,
             playbackPositionSeconds = state.playbackPositionSeconds,
             replayWindowEndSeconds = state.replayWindowEndSeconds,
+            mode = state.mode,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -367,53 +368,56 @@ private fun SpectrumChart(
     frames: List<SpectrumFramePoint>,
     playbackPositionSeconds: Double?,
     replayWindowEndSeconds: Double?,
+    mode: SpectrumMode,
     modifier: Modifier = Modifier,
 ) {
     val latestTimestamp = frames.lastOrNull()?.timestampSeconds ?: 0.0
     val targetWindowEnd = replayWindowEndSeconds ?: latestTimestamp
-    val animatedWindowEnd by animateFloatAsState(
-        targetValue = targetWindowEnd.toFloat(),
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 220f),
-        label = "spectrum-window",
-    )
-    val windowEnd = animatedWindowEnd.toDouble()
+    val windowEndAnimation = remember { Animatable(targetWindowEnd.toFloat()) }
+    LaunchedEffect(targetWindowEnd, mode) {
+        if (mode == SpectrumMode.REPLAYING || mode == SpectrumMode.ANALYSIS_PAUSED) {
+            windowEndAnimation.snapTo(targetWindowEnd.toFloat())
+        } else {
+            windowEndAnimation.animateTo(
+                targetValue = targetWindowEnd.toFloat(),
+                animationSpec = spring(dampingRatio = 0.82f, stiffness = 220f),
+            )
+        }
+    }
+    val windowEnd = windowEndAnimation.value.toDouble()
     val windowStart = windowEnd - SPECTRUM_WINDOW_SECONDS
-    val targetPosition = playbackPositionSeconds ?: windowStart
-    val animatedPosition by animateFloatAsState(
-        targetValue = targetPosition.toFloat(),
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 220f),
-        label = "spectrum-playhead",
-    )
     val image = remember(frames, windowStart, windowEnd) {
         createSpectrumBitmap(frames, windowStart, windowEnd)
     }
     val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.62f)
-    val surfaceColor = MaterialTheme.colorScheme.background
     val playheadColor = MaterialTheme.colorScheme.primary
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val plotLeft = 44.dp
-        val plotHeight = maxHeight
+        val plotTop = 104.dp
+        val plotHeight = (maxHeight - plotTop).coerceAtLeast(1.dp)
 
         fun yFraction(hz: Float): Float =
             (log10(hz / SPECTRUM_MIN_HZ) / log10(SPECTRUM_MAX_HZ / SPECTRUM_MIN_HZ))
                 .toFloat()
                 .coerceIn(0f, 1f)
 
-        fun yDp(hz: Float) = plotHeight - plotHeight * yFraction(hz)
+        fun yDp(hz: Float) = plotTop + plotHeight - plotHeight * yFraction(hz)
 
         Canvas(modifier = Modifier.fillMaxSize()) {
             val plotLeftPx = plotLeft.toPx()
+            val plotTopPx = plotTop.toPx()
             val plotWidthPx = (size.width - plotLeftPx).coerceAtLeast(1f)
-            fun yFor(hz: Float): Float = size.height - yFraction(hz) * size.height
+            val plotHeightPx = (size.height - plotTopPx).coerceAtLeast(1f)
+            fun yFor(hz: Float): Float = plotTopPx + plotHeightPx - yFraction(hz) * plotHeightPx
 
             if (image != null) {
                 drawImage(
                     image = image,
                     srcOffset = IntOffset.Zero,
                     srcSize = IntSize(image.width, image.height),
-                    dstOffset = IntOffset(plotLeftPx.roundToInt(), 0),
-                    dstSize = IntSize(plotWidthPx.roundToInt(), size.height.toInt()),
+                    dstOffset = IntOffset(plotLeftPx.roundToInt(), plotTopPx.roundToInt()),
+                    dstSize = IntSize(plotWidthPx.roundToInt(), plotHeightPx.roundToInt()),
                     filterQuality = FilterQuality.Low,
                 )
             }
@@ -426,26 +430,13 @@ private fun SpectrumChart(
                     strokeWidth = if (hz == 1000f) 1.6.dp.toPx() else 1.dp.toPx(),
                 )
             }
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        surfaceColor,
-                        surfaceColor.copy(alpha = 0.82f),
-                        surfaceColor.copy(alpha = 0f),
-                    ),
-                    startY = 0f,
-                    endY = 188.dp.toPx(),
-                ),
-                topLeft = Offset(plotLeftPx, 0f),
-                size = Size(plotWidthPx, 188.dp.toPx()),
-            )
             if (playbackPositionSeconds != null) {
                 val x = plotLeftPx + (
-                    (animatedPosition - windowStart) / SPECTRUM_WINDOW_SECONDS
+                    (playbackPositionSeconds - windowStart) / SPECTRUM_WINDOW_SECONDS
                     ).toFloat().coerceIn(0f, 1f) * plotWidthPx
                 drawLine(
                     color = playheadColor,
-                    start = Offset(x, 0f),
+                    start = Offset(x, plotTopPx),
                     end = Offset(x, size.height),
                     strokeWidth = 2.dp.toPx(),
                 )
@@ -525,10 +516,10 @@ private fun createSpectrumBitmap(
 }
 
 private fun spectrumColor(value: Float): Color = when {
-    value < 0.35f -> lerp(SpectrumLow, SpectrumBlue, value / 0.35f)
-    value < 0.65f -> lerp(SpectrumBlue, SpectrumCyan, (value - 0.35f) / 0.3f)
-    value < 0.85f -> lerp(SpectrumCyan, SpectrumPink, (value - 0.65f) / 0.2f)
-    else -> lerp(SpectrumPink, SpectrumHigh, (value - 0.85f) / 0.15f)
+    value < 0.28f -> lerp(SpectrumLow, SpectrumBlue, value / 0.28f)
+    value < 0.50f -> lerp(SpectrumBlue, SpectrumCyan, (value - 0.28f) / 0.22f)
+    value < 0.68f -> lerp(SpectrumCyan, SpectrumPink, (value - 0.50f) / 0.18f)
+    else -> lerp(SpectrumPink, SpectrumHigh, (value - 0.68f) / 0.32f)
 }
 
 private fun formatFrequencyAxis(hz: Float): String =
