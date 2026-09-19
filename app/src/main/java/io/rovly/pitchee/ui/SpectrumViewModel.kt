@@ -28,8 +28,8 @@ enum class SpectrumMode {
     IDLE,
     PREPARING,
     ANALYZING,
-    PLAYING,
-    PAUSED,
+    ANALYSIS_PAUSED,
+    REPLAYING,
 }
 
 data class SpectrumFramePoint(
@@ -46,7 +46,9 @@ data class SpectrumUiState(
     val mode: SpectrumMode = SpectrumMode.IDLE,
     val frames: List<SpectrumFramePoint> = emptyList(),
     val playbackPositionSeconds: Double? = null,
-    val playbackEndSeconds: Double? = null,
+    val replayWindowStartSeconds: Double? = null,
+    val replayWindowEndSeconds: Double? = null,
+    val replayTailEndSeconds: Double? = null,
     val error: String? = null,
 )
 
@@ -60,8 +62,10 @@ class SpectrumViewModel(
     private val frameBuffer = ArrayDeque<SpectrumFramePoint>()
     private val audioRing = FloatArray((SAMPLE_RATE * HISTORY_SECONDS).toInt())
     private var ringWriteIndex = 0
+
     @Volatile
     private var totalSamples = 0L
+    private var replayTailSample = 0L
     private var lastPublishedTimestamp = Double.NEGATIVE_INFINITY
     private val mutableState = MutableStateFlow(SpectrumUiState())
     val state: StateFlow<SpectrumUiState> = mutableState.asStateFlow()
@@ -76,57 +80,41 @@ class SpectrumViewModel(
         if (mutableState.value.mode == SpectrumMode.IDLE) return
         stopLiveCapture()
         stopPlaybackInternal()
-        val currentSample = mutableState.value.playbackPositionSeconds
-            ?.times(SAMPLE_RATE)
-            ?.toLong()
-            ?: totalSamples
-        val targetSample = (currentSample - REWIND_SECONDS * SAMPLE_RATE)
-            .coerceAtLeast(oldestSample())
-        updatePlaybackState(
-            mode = SpectrumMode.PAUSED,
-            positionSample = targetSample,
+
+        val currentWindowStart = mutableState.value.replayWindowStartSeconds
+        val currentWindowEnd = mutableState.value.replayWindowEndSeconds
+            ?: totalSamples.toDouble() / SAMPLE_RATE
+        val liveTail = totalSamples.toDouble() / SAMPLE_RATE
+
+        if (replayTailSample <= 0L) {
+            replayTailSample = totalSamples
+        }
+
+        val targetEnd = if (currentWindowStart != null) {
+            currentWindowStart
+        } else {
+            min(currentWindowEnd, replayTailSample.toDouble() / SAMPLE_RATE)
+        }
+        val targetStart = max(
+            oldestSample().toDouble() / SAMPLE_RATE,
+            targetEnd - WINDOW_SECONDS,
+        )
+        if (targetEnd - targetStart <= END_EPSILON_SECONDS) {
+            startAnalysisInternal()
+            return
+        }
+
+        startReplayWindow(
+            startSeconds = targetStart,
+            endSeconds = min(targetEnd, liveTail),
         )
     }
 
-    fun forwardFiveSeconds() {
-        if (mutableState.value.mode == SpectrumMode.IDLE) return
-        stopPlaybackInternal()
-        val currentSample = mutableState.value.playbackPositionSeconds
-            ?.times(SAMPLE_RATE)
-            ?.toLong()
-            ?: totalSamples
-        val targetSample = (currentSample + FORWARD_SECONDS * SAMPLE_RATE)
-            .coerceAtMost(totalSamples)
-        if (targetSample >= totalSamples - END_EPSILON_SAMPLES) {
-            updatePlaybackState(
-                mode = SpectrumMode.PAUSED,
-                positionSample = totalSamples,
-            )
-            resumeAnalysis()
-        } else {
-            updatePlaybackState(
-                mode = SpectrumMode.PAUSED,
-                positionSample = targetSample,
-            )
-        }
-    }
-
-    fun togglePlaybackOrAnalysis() {
+    fun toggleAnalysis() {
         when (mutableState.value.mode) {
             SpectrumMode.IDLE -> start()
             SpectrumMode.PREPARING, SpectrumMode.ANALYZING -> pauseAnalysis()
-            SpectrumMode.PLAYING -> pausePlayback()
-            SpectrumMode.PAUSED -> {
-                val positionSample = mutableState.value.playbackPositionSeconds
-                    ?.times(SAMPLE_RATE)
-                    ?.toLong()
-                    ?: totalSamples
-                if (positionSample >= totalSamples - END_EPSILON_SAMPLES) {
-                    resumeAnalysis()
-                } else {
-                    startPlayback(positionSample)
-                }
-            }
+            SpectrumMode.ANALYSIS_PAUSED, SpectrumMode.REPLAYING -> resumeAnalysis()
         }
     }
 
@@ -146,6 +134,7 @@ class SpectrumViewModel(
         audioRing.fill(0f)
         ringWriteIndex = 0
         totalSamples = 0L
+        replayTailSample = 0L
         lastPublishedTimestamp = Double.NEGATIVE_INFINITY
         mutableState.value = SpectrumUiState()
     }
@@ -157,11 +146,14 @@ class SpectrumViewModel(
             return
         }
         stopPlaybackInternal()
+        replayTailSample = 0L
         mutableState.update {
             it.copy(
                 mode = SpectrumMode.PREPARING,
                 playbackPositionSeconds = null,
-                playbackEndSeconds = null,
+                replayWindowStartSeconds = null,
+                replayWindowEndSeconds = null,
+                replayTailEndSeconds = null,
                 error = null,
             )
         }
@@ -236,10 +228,15 @@ class SpectrumViewModel(
 
     private fun pauseAnalysis() {
         stopLiveCapture()
-        updatePlaybackState(
-            mode = SpectrumMode.PAUSED,
-            positionSample = totalSamples,
-        )
+        mutableState.update {
+            it.copy(
+                mode = SpectrumMode.ANALYSIS_PAUSED,
+                playbackPositionSeconds = null,
+                replayWindowStartSeconds = null,
+                replayWindowEndSeconds = null,
+                replayTailEndSeconds = null,
+            )
+        }
     }
 
     private fun resumeAnalysis() {
@@ -253,54 +250,74 @@ class SpectrumViewModel(
         recorder.stop()
     }
 
-    private fun startPlayback(startSample: Long) {
-        val safeStart = startSample
+    private fun startReplayWindow(
+        startSeconds: Double,
+        endSeconds: Double,
+    ) {
+        val startSample = (startSeconds * SAMPLE_RATE).toLong()
             .coerceAtLeast(oldestSample())
             .coerceAtMost(totalSamples)
-        if (safeStart >= totalSamples - END_EPSILON_SAMPLES) {
+        val endSample = (endSeconds * SAMPLE_RATE).toLong()
+            .coerceIn(startSample, totalSamples)
+        if (endSample <= startSample) {
             resumeAnalysis()
             return
         }
-        updatePlaybackState(mode = SpectrumMode.PLAYING, positionSample = safeStart)
+
+        updateReplayState(
+            positionSample = startSample,
+            windowStartSample = startSample,
+            windowEndSample = endSample,
+            tailSample = replayTailSample,
+        )
         playbackJob = viewModelScope.launch(Dispatchers.Default) {
             var track: AudioTrack? = null
-            var reachedEnd = false
+            var reachedTail = false
             try {
                 track = createAudioTrack()
                 audioTrack = track
                 track.play()
-                var positionSample = safeStart
-                var lastPublished = Double.NEGATIVE_INFINITY
-                while (isActive && positionSample < totalSamples) {
-                    val count = min(PLAYBACK_CHUNK_SAMPLES, (totalSamples - positionSample).toInt())
-                    val samples = copyAudio(positionSample, count)
-                    val written = track.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
-                    check(written >= 0) { "音频回放失败：$written" }
-                    positionSample += written
-                    val positionSeconds = positionSample.toDouble() / SAMPLE_RATE
-                    if (positionSeconds - lastPublished >= PLAYBACK_PUBLISH_INTERVAL_SECONDS) {
-                        lastPublished = positionSeconds
-                        mutableState.update {
-                            it.copy(playbackPositionSeconds = positionSeconds)
-                        }
+                var windowStart = startSample
+                var windowEnd = endSample
+                while (isActive && windowStart < replayTailSample) {
+                    updateReplayState(
+                        positionSample = windowStart,
+                        windowStartSample = windowStart,
+                        windowEndSample = windowEnd,
+                        tailSample = replayTailSample,
+                    )
+                    var position = windowStart
+                    while (isActive && position < windowEnd) {
+                        val count = min(
+                            PLAYBACK_CHUNK_SAMPLES,
+                            (windowEnd - position).toInt(),
+                        )
+                        val samples = copyAudio(position, count)
+                        val written = track.write(
+                            samples,
+                            0,
+                            samples.size,
+                            AudioTrack.WRITE_BLOCKING,
+                        )
+                        check(written >= 0) { "音频回放失败：$written" }
+                        position += written
+                        updateReplayPosition(position)
                     }
-                }
-                reachedEnd = positionSample >= totalSamples
-                if (reachedEnd) {
-                    updatePlaybackState(
-                        mode = SpectrumMode.PAUSED,
-                        positionSample = totalSamples,
+
+                    if (windowEnd >= replayTailSample - END_EPSILON_SAMPLES) {
+                        reachedTail = true
+                        break
+                    }
+                    windowStart = windowEnd
+                    windowEnd = min(
+                        windowStart + (WINDOW_SECONDS * SAMPLE_RATE).toLong(),
+                        replayTailSample,
                     )
                 }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                mutableState.update {
-                    it.copy(
-                        mode = SpectrumMode.PAUSED,
-                        error = error.message,
-                    )
-                }
+                mutableState.update { it.copy(error = error.message) }
             } finally {
                 runCatching { track?.pause() }
                 track?.flush()
@@ -308,20 +325,34 @@ class SpectrumViewModel(
                 if (audioTrack === track) audioTrack = null
                 playbackJob = null
             }
-            if (reachedEnd) resumeAnalysis()
+            if (reachedTail) resumeAnalysis()
         }
     }
 
-    private fun pausePlayback() {
-        val positionSample = mutableState.value.playbackPositionSeconds
-            ?.times(SAMPLE_RATE)
-            ?.toLong()
-            ?: totalSamples
-        stopPlaybackInternal()
-        updatePlaybackState(
-            mode = SpectrumMode.PAUSED,
-            positionSample = positionSample,
-        )
+    private fun updateReplayPosition(positionSample: Long) {
+        mutableState.update {
+            it.copy(
+                mode = SpectrumMode.REPLAYING,
+                playbackPositionSeconds = positionSample.toDouble() / SAMPLE_RATE,
+            )
+        }
+    }
+
+    private fun updateReplayState(
+        positionSample: Long,
+        windowStartSample: Long,
+        windowEndSample: Long,
+        tailSample: Long,
+    ) {
+        mutableState.update {
+            it.copy(
+                mode = SpectrumMode.REPLAYING,
+                playbackPositionSeconds = positionSample.toDouble() / SAMPLE_RATE,
+                replayWindowStartSeconds = windowStartSample.toDouble() / SAMPLE_RATE,
+                replayWindowEndSeconds = windowEndSample.toDouble() / SAMPLE_RATE,
+                replayTailEndSeconds = tailSample.toDouble() / SAMPLE_RATE,
+            )
+        }
     }
 
     private fun stopPlaybackInternal() {
@@ -333,20 +364,6 @@ class SpectrumViewModel(
         if (track != null) {
             runCatching { track.pause() }
             track.flush()
-        }
-    }
-
-    private fun updatePlaybackState(
-        mode: SpectrumMode,
-        positionSample: Long,
-    ) {
-        val safeSample = positionSample.coerceIn(0L, totalSamples)
-        mutableState.update {
-            it.copy(
-                mode = mode,
-                playbackPositionSeconds = safeSample.toDouble() / SAMPLE_RATE,
-                playbackEndSeconds = totalSamples.toDouble() / SAMPLE_RATE,
-            )
         }
     }
 
@@ -395,7 +412,9 @@ class SpectrumViewModel(
                     .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
                     .build(),
             )
-            .setBufferSizeInBytes(max(minimumBuffer, PLAYBACK_CHUNK_SAMPLES * Float.SIZE_BYTES * 4))
+            .setBufferSizeInBytes(
+                max(minimumBuffer, PLAYBACK_CHUNK_SAMPLES * Float.SIZE_BYTES * 4),
+            )
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
             .also {
@@ -416,16 +435,15 @@ class SpectrumViewModel(
         private const val MIN_HZ = 40
         private const val MAX_HZ = 8000
         private const val READ_SAMPLES = 512
+        const val WINDOW_SECONDS = 5.0
         private const val SAMPLE_RATE = 16_000
-        private const val HISTORY_SECONDS = 10.0
+        private const val HISTORY_SECONDS = 30.0
         private const val PUBLISH_INTERVAL_SECONDS = 1.0 / 30.0
-        private const val PLAYBACK_PUBLISH_INTERVAL_SECONDS = 1.0 / 30.0
-        private const val REWIND_SECONDS = 5L
-        private const val FORWARD_SECONDS = 5L
         private const val PLAYBACK_CHUNK_SAMPLES = 512
+        private const val END_EPSILON_SECONDS = 0.01
         private const val END_EPSILON_SAMPLES = 160L
-        // 10 seconds at 16 kHz / 256 samples is about 625 frames.
-        private const val MAX_FRAMES = 640
+        // 30 seconds at 16 kHz / 256 samples is about 1875 frames.
+        private const val MAX_FRAMES = 1880
 
         fun factory(context: Context): ViewModelProvider.Factory = viewModelFactory {
             initializer {

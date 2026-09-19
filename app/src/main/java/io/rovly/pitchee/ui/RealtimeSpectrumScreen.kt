@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.scaleIn
@@ -97,7 +98,7 @@ internal fun RealtimeSpectrumScreen() {
                 permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
             }
         } else {
-            viewModel.togglePlaybackOrAnalysis()
+            viewModel.toggleAnalysis()
         }
     }
 
@@ -109,6 +110,8 @@ internal fun RealtimeSpectrumScreen() {
         SpectrumChart(
             frames = state.frames,
             playbackPositionSeconds = state.playbackPositionSeconds,
+            replayWindowStartSeconds = state.replayWindowStartSeconds,
+            replayWindowEndSeconds = state.replayWindowEndSeconds,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -170,7 +173,6 @@ internal fun RealtimeSpectrumScreen() {
                 mode = state.mode,
                 onToggle = ::toggleAnalysis,
                 onRewind = viewModel::rewindFiveSeconds,
-                onForward = viewModel::forwardFiveSeconds,
             )
         }
     }
@@ -181,7 +183,6 @@ private fun SpectrumControls(
     mode: SpectrumMode,
     onToggle: () -> Unit,
     onRewind: () -> Unit,
-    onForward: () -> Unit,
 ) {
     val showToolbar = mode != SpectrumMode.IDLE
     AnimatedContent(
@@ -198,7 +199,6 @@ private fun SpectrumControls(
                 mode = mode,
                 onToggle = onToggle,
                 onRewind = onRewind,
-                onForward = onForward,
             )
         } else {
             FilledIconButton(
@@ -220,11 +220,14 @@ private fun SpectrumToolbar(
     mode: SpectrumMode,
     onToggle: () -> Unit,
     onRewind: () -> Unit,
-    onForward: () -> Unit,
 ) {
-    val playing = mode == SpectrumMode.ANALYZING || mode == SpectrumMode.PLAYING
-    val centerIcon = if (playing) R.drawable.ic_pause else R.drawable.ic_play
+    val resumeAnalysis = mode == SpectrumMode.REPLAYING ||
+        mode == SpectrumMode.ANALYSIS_PAUSED
+    val centerIcon = if (resumeAnalysis) R.drawable.ic_play else R.drawable.ic_pause
     Surface(
+        modifier = Modifier.animateContentSize(
+            animationSpec = spring(dampingRatio = 0.78f, stiffness = 280f),
+        ),
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -269,21 +272,16 @@ private fun SpectrumToolbar(
                         Icon(
                             painter = painterResource(icon),
                             contentDescription = stringResource(
-                                if (playing) {
-                                    R.string.spectrum_pause
+                                if (resumeAnalysis) {
+                                    R.string.spectrum_resume_analysis
                                 } else {
-                                    R.string.spectrum_resume
+                                    R.string.spectrum_pause
                                 },
                             ),
                         )
                     }
                 }
             }
-            ControlIconButton(
-                iconRes = R.drawable.ic_forward,
-                contentDescription = stringResource(R.string.spectrum_forward_5),
-                onClick = onForward,
-            )
         }
     }
 }
@@ -309,13 +307,14 @@ private fun ControlIconButton(
 private fun SpectrumChart(
     frames: List<SpectrumFramePoint>,
     playbackPositionSeconds: Double?,
+    replayWindowStartSeconds: Double?,
+    replayWindowEndSeconds: Double?,
     modifier: Modifier = Modifier,
 ) {
     val latestTimestamp = frames.lastOrNull()?.timestampSeconds ?: 0.0
-    val windowEnd = playbackPositionSeconds?.plus(SPECTRUM_WINDOW_SECONDS / 2.0)
-        ?: latestTimestamp
-    val windowStart = windowEnd - SPECTRUM_WINDOW_SECONDS
-    val targetPosition = playbackPositionSeconds ?: latestTimestamp
+    val windowEnd = replayWindowEndSeconds ?: latestTimestamp
+    val windowStart = replayWindowStartSeconds ?: (windowEnd - SPECTRUM_WINDOW_SECONDS)
+    val targetPosition = playbackPositionSeconds ?: windowStart
     val animatedPosition by animateFloatAsState(
         targetValue = targetPosition.toFloat(),
         animationSpec = spring(dampingRatio = 0.82f, stiffness = 220f),
@@ -477,7 +476,7 @@ private val SpectrumBlue = Color(0xFF2357D8)
 private val SpectrumCyan = Color(0xFF19B9C8)
 private val SpectrumPink = Color(0xFFE75480)
 private val SpectrumHigh = Color(0xFFFFD9A0)
-private const val SPECTRUM_WINDOW_SECONDS = 3.0
+private const val SPECTRUM_WINDOW_SECONDS = 5.0
 private const val SPECTRUM_BITMAP_WIDTH = 192
 private const val SPECTRUM_BITMAP_HEIGHT = 72
 private const val SPECTRUM_MIN_DB = -90f

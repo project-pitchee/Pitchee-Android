@@ -86,9 +86,8 @@
     <string name="spectrum_start_monitoring">开始频谱监测</string>
     <string name="spectrum_stop_monitoring">停止频谱监测</string>
     <string name="spectrum_pause">暂停</string>
-    <string name="spectrum_resume">恢复</string>
+    <string name="spectrum_resume_analysis">恢复分析</string>
     <string name="spectrum_rewind_5">后退 5 秒</string>
-    <string name="spectrum_forward_5">快进 5 秒</string>
     <string name="spectrum_no_signal">等待声音输入</string>
     <string name="analysis_inference_title">推理你的声音</string>
     <string name="click_to_record">点击开始录制</string>
