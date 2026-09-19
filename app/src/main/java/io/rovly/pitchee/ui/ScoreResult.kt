@@ -56,6 +56,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -1081,6 +1082,7 @@ private fun MetricsCard(
     val f0Animation = remember { Animatable(previousF0.toFloat()) }
     val compareInteraction = remember { MutableInteractionSource() }
     val comparing by compareInteraction.collectIsPressedAsState()
+    val comparisonActive = comparing && previousMetrics != null
 
     LaunchedEffect(result, previousMetrics, animate) {
         standardAnimation.stop()
@@ -1122,21 +1124,22 @@ private fun MetricsCard(
         }
     }
 
-    val standardProgress = if (comparing) {
+    val standardProgress = if (comparisonActive) {
         (previousStandard / 100.0).toFloat()
     } else {
         (standardAnimation.value / 100f).coerceIn(0f, 1f)
     }
-    val naturalnessProgress = if (comparing) {
+    val naturalnessProgress = if (comparisonActive) {
         (previousNaturalness / 100.0).toFloat()
     } else {
         (naturalnessAnimation.value / 100f).coerceIn(0f, 1f)
     }
-    val f0ProgressValue = if (comparing) previousF0 else f0Animation.value.toDouble()
+    val f0ProgressValue = if (comparisonActive) previousF0 else f0Animation.value.toDouble()
     val f0Progress = (f0ProgressScore(f0ProgressValue) / 100.0).toFloat()
-    val standardForColor = if (comparing) previousStandard else standardAnimation.value.toDouble()
+    val standardForColor =
+        if (comparisonActive) previousStandard else standardAnimation.value.toDouble()
     val naturalnessForColor =
-        if (comparing) previousNaturalness else naturalnessAnimation.value.toDouble()
+        if (comparisonActive) previousNaturalness else naturalnessAnimation.value.toDouble()
     val f0ForColor = f0ProgressScore(f0ProgressValue)
 
     Column {
@@ -1178,7 +1181,7 @@ private fun MetricsCard(
                     Spacer(Modifier.height(14.dp))
                     MetricRow(
                         label = if (languageCode.startsWith("en")) "Timbre" else "标准音色",
-                        value = if (comparing) {
+                        value = if (comparisonActive) {
                             "%.1f".format(previousStandard)
                         } else {
                             "%.1f".format(currentStandard)
@@ -1191,7 +1194,7 @@ private fun MetricsCard(
                     Spacer(Modifier.height(14.dp))
                     MetricRow(
                         label = if (languageCode.startsWith("en")) "Naturalness" else "自然度",
-                        value = if (comparing) {
+                        value = if (comparisonActive) {
                             "%.1f".format(previousNaturalness)
                         } else {
                             "%.1f".format(currentNaturalness)
@@ -1204,7 +1207,7 @@ private fun MetricsCard(
                     Spacer(Modifier.height(14.dp))
                     MetricRow(
                         label = if (languageCode.startsWith("en")) "Mean F0" else "平均 F0",
-                        value = if (comparing) {
+                        value = if (comparisonActive) {
                             previousMetrics?.meanF0Hz?.let { "%.0f Hz".format(it) } ?: if (languageCode.startsWith("en")) "Not detected" else "未检测到"
                         } else {
                             currentF0?.let { "%.0f Hz".format(it) } ?: if (languageCode.startsWith("en")) "Not detected" else "未检测到"
@@ -1224,10 +1227,10 @@ private fun MetricsCard(
                 }
             }
         }
-        if (previousMetrics == null) {
+        if (comparing && previousMetrics == null) {
             Spacer(Modifier.height(6.dp))
             Text(
-                text = if (languageCode.startsWith("en")) "No previous metrics were found." else "没有找到上次的指标。",
+                text = stringResource(R.string.score_no_previous_metrics),
                 modifier = Modifier.padding(start = 8.dp),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.error,

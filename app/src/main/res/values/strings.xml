@@ -31,15 +31,17 @@
     <string name="history_detail_back_result">返回结果</string>
     <string name="history_detail_rules">评分规则</string>
     <string name="history_detail_rules_subtitle">查看这次测评的完整计算过程</string>
+    <string name="score_no_previous_metrics">没有找到上次的指标。</string>
     <string name="dashboard_title">仪表盘</string>
     <string name="dashboard_average_f0">我的平均 F0</string>
-    <string name="dashboard_no_realtime">还没有实时基频记录</string>
+    <string name="dashboard_no_realtime">还没有 F0 记录</string>
     <string name="dashboard_no_valid_f0">记录中暂时没有有效 F0</string>
     <string name="dashboard_latest_f0">最近一次 %1$.0f Hz</string>
     <string name="dashboard_metric_chart">测评轨迹</string>
     <string name="dashboard_metric_f0">F0</string>
     <string name="dashboard_metric_naturalness">自然度</string>
     <string name="dashboard_metric_standard">标准分</string>
+    <string name="dashboard_metric_composite">综合分</string>
     <string name="dashboard_metric_no_data">还没有足够的测评数据来绘制轨迹。</string>
     <string name="dashboard_reset">重置</string>
     <string name="dashboard_delete">删除</string>
@@ -54,6 +56,7 @@
     <string name="play">播放</string>
     <string name="pause">暂停</string>
     <string name="expand_and_play">展开并播放</string>
+    <string name="audio_unavailable">没有可播放的音频</string>
     <string name="nav_dashboard">仪表盘</string>
     <string name="nav_pitch">基频</string>
     <string name="nav_analysis">声音分析</string>

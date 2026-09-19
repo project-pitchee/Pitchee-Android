@@ -84,6 +84,24 @@ private const val F0_MAXIMUM_HZ = 600f
 private const val F0_MINIMUM_DISPLAY_HZ = 300f
 private const val F0_MAXIMUM_GAP_SECONDS = 0.35
 
+@Composable
+internal fun DisabledAudioPlayerButton(modifier: Modifier = Modifier) {
+    FilledIconButton(
+        onClick = {},
+        enabled = false,
+        modifier = modifier.size(52.dp),
+        colors = IconButtonDefaults.filledIconButtonColors(
+            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+        ),
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_play),
+            contentDescription = stringResource(R.string.audio_unavailable),
+        )
+    }
+}
+
 internal fun feminineScoreColor(score: Double): Color = when {
     score < 20.0 -> ScoreColors[0]
     score < 40.0 -> ScoreColors[1]
@@ -223,123 +241,126 @@ internal fun RecordedAudioTimeline(
     )
     val sizeModifier = if (expanded) Modifier.fillMaxWidth() else Modifier.size(52.dp)
 
-    Surface(
-        modifier = modifier
-            .animateContentSize(
-                animationSpec = spring(dampingRatio = 0.76f, stiffness = 220f),
-            )
-            .then(sizeModifier)
-            .clickable(enabled = !expanded) {
-                expanded = true
-                playWhenReady = true
-            },
-        shape = RoundedCornerShape(cornerRadius),
-        color = containerColor,
-        contentColor = if (expanded) playerContent else playerAccentContent,
-        shadowElevation = if (expanded) 0.dp else 3.dp,
-    ) {
-        if (expanded) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    FilledIconButton(
-                        enabled = isPrepared,
-                        onClick = ::togglePlayback,
-                        modifier = Modifier.size(44.dp),
-                        colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = playerAccent,
-                            contentColor = playerAccentContent,
-                            disabledContainerColor = playerAccent.copy(alpha = 0.42f),
-                            disabledContentColor = playerAccentContent.copy(alpha = 0.58f),
-                        ),
-                    ) {
-                        Icon(
-                            painter = painterResource(
-                                if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play,
-                            ),
-                            contentDescription = stringResource(if (isPlaying) R.string.pause else R.string.play),
-                        )
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Slider(
-                        value = (positionMs / 1000f).coerceIn(0f, audio.durationSeconds.toFloat()),
-                        onValueChange = { seconds ->
-                            if (!scrubbing) {
-                                scrubbing = true
-                                resumeAfterScrub = isPlaying
-                                if (isPlaying) {
-                                    player.pause()
-                                    isPlaying = false
-                                }
-                            }
-                            seekTo(seconds.toDouble())
-                        },
-                        onValueChangeFinished = {
-                            scrubbing = false
-                            if (resumeAfterScrub) {
-                                player.start()
-                                isPlaying = true
-                            }
-                            resumeAfterScrub = false
-                        },
-                        enabled = isPrepared,
-                        valueRange = 0f..audio.durationSeconds.toFloat().coerceAtLeast(0.01f),
-                        modifier = Modifier.weight(1f),
-                        colors = SliderDefaults.colors(
-                            thumbColor = playerAccent,
-                            activeTrackColor = playerAccent,
-                            inactiveTrackColor = playerContent.copy(alpha = 0.18f),
-                        ),
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
-                Box(
+    if (isPrepared) {
+        Surface(
+            modifier = modifier
+                .animateContentSize(
+                    animationSpec = spring(dampingRatio = 0.76f, stiffness = 220f),
+                )
+                .then(sizeModifier)
+                .clickable(enabled = !expanded) {
+                    expanded = true
+                    playWhenReady = true
+                },
+            shape = RoundedCornerShape(cornerRadius),
+            color = containerColor,
+            contentColor = if (expanded) playerContent else playerAccentContent,
+            shadowElevation = if (expanded) 0.dp else 3.dp,
+        ) {
+            if (expanded) {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(248.dp),
+                        .padding(16.dp),
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth(),
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        BasicWaveform(
-                            audio = audio,
-                            segmentScores = segmentScores,
-                            positionSeconds = positionMs / 1000.0,
-                            windowSeconds = windowSeconds,
+                        FilledIconButton(
+                            onClick = ::togglePlayback,
+                            modifier = Modifier.size(44.dp),
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = playerAccent,
+                                contentColor = playerAccentContent,
+                            ),
+                        ) {
+                            Icon(
+                                painter = painterResource(
+                                    if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play,
+                                ),
+                                contentDescription = stringResource(
+                                    if (isPlaying) R.string.pause else R.string.play,
+                                ),
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Slider(
+                            value = (positionMs / 1000f)
+                                .coerceIn(0f, audio.durationSeconds.toFloat()),
+                            onValueChange = { seconds ->
+                                if (!scrubbing) {
+                                    scrubbing = true
+                                    resumeAfterScrub = isPlaying
+                                    if (isPlaying) {
+                                        player.pause()
+                                        isPlaying = false
+                                    }
+                                }
+                                seekTo(seconds.toDouble())
+                            },
+                            onValueChangeFinished = {
+                                scrubbing = false
+                                if (resumeAfterScrub) {
+                                    player.start()
+                                    isPlaying = true
+                                }
+                                resumeAfterScrub = false
+                            },
+                            valueRange = 0f..audio.durationSeconds.toFloat().coerceAtLeast(0.01f),
+                            modifier = Modifier.weight(1f),
+                            colors = SliderDefaults.colors(
+                                thumbColor = playerAccent,
+                                activeTrackColor = playerAccent,
+                                inactiveTrackColor = playerContent.copy(alpha = 0.18f),
+                            ),
                         )
                     }
-                    F0Track(
-                        f0Windows = f0Windows,
-                        positionSeconds = positionMs / 1000.0,
-                        windowSeconds = windowSeconds,
-                        accent = playerAccent,
-                        thresholdColor = playerContent.copy(alpha = 0.34f),
-                        thresholdLabelColor = playerContent.copy(alpha = 0.38f),
-                        metricsTimeline = metricsTimeline,
-                        segmentScores = segmentScores,
-                        modifier = Modifier.fillMaxSize(),
+                    Spacer(Modifier.height(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(248.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth(),
+                        ) {
+                            BasicWaveform(
+                                audio = audio,
+                                segmentScores = segmentScores,
+                                positionSeconds = positionMs / 1000.0,
+                                windowSeconds = windowSeconds,
+                            )
+                        }
+                        F0Track(
+                            f0Windows = f0Windows,
+                            positionSeconds = positionMs / 1000.0,
+                            windowSeconds = windowSeconds,
+                            accent = playerAccent,
+                            thresholdColor = playerContent.copy(alpha = 0.34f),
+                            thresholdLabelColor = playerContent.copy(alpha = 0.38f),
+                            metricsTimeline = metricsTimeline,
+                            segmentScores = segmentScores,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+            } else {
+                Box(
+                    modifier = Modifier.size(52.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_play),
+                        contentDescription = stringResource(R.string.expand_and_play),
                     )
                 }
             }
-        } else {
-            Box(
-                modifier = Modifier.size(52.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_play),
-                    contentDescription = stringResource(R.string.expand_and_play),
-                )
-            }
         }
+    } else {
+        DisabledAudioPlayerButton(modifier)
     }
 }
 
@@ -655,30 +676,18 @@ private fun BasicWaveform(
     ) {
         val duration = audio.durationSeconds.coerceAtLeast(0.001)
         val viewportStart = positionSeconds - windowSeconds / 2.0
-        val viewportEnd = viewportStart + windowSeconds
         val centerY = size.height / 2f
         val targetBarSpacingPx = 3.dp.toPx()
-        val secondsPerBar = targetBarSpacingPx / size.width * windowSeconds
-        val bucketStep = (
-            secondsPerBar / duration * waveform.lastIndex
-            ).toInt().coerceAtLeast(1)
-        val lastBucket = waveform.lastIndex
-        val firstVisibleBucket = floor(
-            viewportStart / duration * lastBucket
-        ).toInt().coerceIn(0, lastBucket)
-        val lastVisibleBucket = ceil(
-            viewportEnd / duration * lastBucket
-        ).toInt().coerceIn(firstVisibleBucket, lastBucket)
+        val barCount = (size.width / targetBarSpacingPx)
+            .roundToInt()
+            .coerceAtLeast(1)
+        val secondsPerBar = windowSeconds / barCount
 
-        var index = firstVisibleBucket
-        while (index <= lastVisibleBucket) {
-            val time = if (lastBucket == 0) {
-                0.0
-            } else {
-                index.toDouble() / lastBucket * duration
-            }
+        for (bar in 0..barCount) {
+            val time = viewportStart + bar * secondsPerBar
+            if (time < 0.0 || time > duration) continue
             val x = ((time - viewportStart) / windowSeconds).toFloat() * size.width
-            val amplitude = waveform[index].coerceIn(0f, 1f)
+            val amplitude = waveformAmplitudeAt(waveform, duration, time)
             val score = segmentScores.firstOrNull { segment ->
                 time >= segment.startSeconds && time < segment.endSeconds
             }?.score
@@ -696,7 +705,25 @@ private fun BasicWaveform(
                 strokeWidth = 2.dp.toPx(),
                 cap = StrokeCap.Round,
             )
-            index += bucketStep
         }
     }
+}
+
+private fun waveformAmplitudeAt(
+    waveform: FloatArray,
+    durationSeconds: Double,
+    seconds: Double,
+): Float {
+    if (waveform.isEmpty()) return 0f
+    if (waveform.size == 1) return waveform[0].coerceIn(0f, 1f)
+
+    val position = (seconds.coerceIn(0.0, durationSeconds) / durationSeconds * waveform.lastIndex)
+        .coerceIn(0.0, waveform.lastIndex.toDouble())
+    val lowerIndex = floor(position).toInt().coerceIn(0, waveform.lastIndex)
+    val upperIndex = ceil(position).toInt().coerceIn(lowerIndex, waveform.lastIndex)
+    val fraction = (position - lowerIndex).toFloat()
+    return (
+        waveform[lowerIndex] * (1f - fraction) +
+            waveform[upperIndex] * fraction
+        ).coerceIn(0f, 1f)
 }

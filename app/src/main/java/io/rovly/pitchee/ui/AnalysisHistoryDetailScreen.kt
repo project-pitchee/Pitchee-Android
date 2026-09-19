@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -43,6 +45,8 @@ private sealed interface HistoryDetailState {
     data class Loaded(
         val result: io.rovly.pitchee.data.PitcheeResult,
         val audio: RecordedAudio?,
+        val previousScore: Double?,
+        val previousMetrics: PreviousMetrics?,
     ) : HistoryDetailState
     data class Error(val message: String) : HistoryDetailState
 }
@@ -74,9 +78,20 @@ internal fun AnalysisHistoryDetailScreen(
                     RecordedAudio.from(audioFile, pcm)
                 }.getOrNull()
             }
+            val previousEntry = store.analyses()
+                .filter { it.timestampMillis < entry.timestampMillis }
+                .maxByOrNull { it.timestampMillis }
             HistoryDetailState.Loaded(
                 result = result,
                 audio = audio,
+                previousScore = previousEntry?.finalScore,
+                previousMetrics = previousEntry?.let {
+                    PreviousMetrics(
+                        standardScore = it.standardScore,
+                        naturalnessScore = it.naturalnessScore,
+                        meanF0Hz = it.meanF0Hz,
+                    )
+                },
             )
         }.getOrElse { error ->
             HistoryDetailState.Error(error.message ?: "无法打开这次分析")
@@ -138,12 +153,16 @@ internal fun AnalysisHistoryDetailScreen(
                 if (showingRules) {
                     HistoryRulesView(
                         result = current.result,
+                        previousScore = current.previousScore,
+                        previousMetrics = current.previousMetrics,
                         onBack = { showingRules = false },
                     )
                 } else {
                     HistoryResultView(
                         result = current.result,
                         audio = current.audio,
+                        previousScore = current.previousScore,
+                        previousMetrics = current.previousMetrics,
                         onBack = onBack,
                         onOpenRules = { showingRules = true },
                     )
@@ -157,6 +176,8 @@ internal fun AnalysisHistoryDetailScreen(
 private fun HistoryResultView(
     result: io.rovly.pitchee.data.PitcheeResult,
     audio: RecordedAudio?,
+    previousScore: Double?,
+    previousMetrics: PreviousMetrics?,
     onBack: () -> Unit,
     onOpenRules: () -> Unit,
 ) {
@@ -170,14 +191,20 @@ private fun HistoryResultView(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 24.dp),
     ) {
-        TextButton(onClick = onBack) {
+        FilledTonalButton(
+            onClick = onBack,
+            colors = ButtonDefaults.filledTonalButtonColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            ),
+        ) {
             Text(stringResource(R.string.history_detail_back))
         }
         Spacer(Modifier.height(8.dp))
         ScoreResultContent(
             result = result,
-            previousScore = null,
-            previousMetrics = null,
+            previousScore = previousScore,
+            previousMetrics = previousMetrics,
             animateScore = false,
             onOpenRules = onOpenRules,
             audioPlayer = audio?.let { recordedAudio ->
@@ -189,7 +216,7 @@ private fun HistoryResultView(
                         metricsTimeline = timeline,
                     )
                 }
-            },
+            } ?: { DisabledAudioPlayerButton() },
         )
     }
 }
@@ -197,6 +224,8 @@ private fun HistoryResultView(
 @Composable
 private fun HistoryRulesView(
     result: io.rovly.pitchee.data.PitcheeResult,
+    previousScore: Double?,
+    previousMetrics: PreviousMetrics?,
     onBack: () -> Unit,
 ) {
     Column(
@@ -223,8 +252,8 @@ private fun HistoryRulesView(
         Spacer(Modifier.height(20.dp))
         ScoreRulesContent(
             result = result,
-            previousScore = null,
-            previousMetrics = null,
+            previousScore = previousScore,
+            previousMetrics = previousMetrics,
         )
     }
 }

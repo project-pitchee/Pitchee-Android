@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -25,12 +26,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -74,7 +75,13 @@ import kotlin.math.roundToInt
 private data class DashboardData(
     val realtimeF0: List<RealtimeF0HistoryEntry> = emptyList(),
     val analyses: List<AnalysisHistoryEntry> = emptyList(),
+    val averageF0ResetAtMillis: Long = 0L,
 )
+
+private val ResetContainerLight = Color(0xFFF7E0E2)
+private val ResetContentLight = Color(0xFF6B343A)
+private val ResetContainerDark = Color(0xFF493034)
+private val ResetContentDark = Color(0xFFF0C8CC)
 
 @Composable
 internal fun DashboardScreen(refreshKey: Any? = Unit) {
@@ -87,6 +94,7 @@ internal fun DashboardScreen(refreshKey: Any? = Unit) {
         data = DashboardData(
             realtimeF0 = store.realtimeF0(),
             analyses = store.analyses(),
+            averageF0ResetAtMillis = store.averageF0ResetAtMillis(),
         )
     }
 
@@ -99,11 +107,22 @@ internal fun DashboardScreen(refreshKey: Any? = Unit) {
         return
     }
 
-    val averageF0 = data.realtimeF0
-        .takeIf { it.isNotEmpty() }
-        ?.map { it.meanF0Hz }
-        ?.average()
-    val latestF0 = data.realtimeF0.firstOrNull()?.meanF0Hz
+    val f0Sources = buildList<Pair<Long, Double>> {
+        data.realtimeF0.forEach { entry ->
+            if (entry.timestampMillis > data.averageF0ResetAtMillis) {
+                add(entry.timestampMillis to entry.meanF0Hz)
+            }
+        }
+        data.analyses.forEach { entry ->
+            val meanF0Hz = entry.meanF0Hz
+            if (meanF0Hz != null && entry.timestampMillis > data.averageF0ResetAtMillis) {
+                add(entry.timestampMillis to meanF0Hz)
+            }
+        }
+    }
+    val averageF0 = f0Sources.takeIf { it.isNotEmpty() }?.map { it.second }?.average()
+    val latestF0 = f0Sources.maxByOrNull { it.first }?.second
+    val darkTheme = isSystemInDarkTheme()
 
     Column(
         modifier = Modifier
@@ -123,7 +142,10 @@ internal fun DashboardScreen(refreshKey: Any? = Unit) {
             color = MaterialTheme.colorScheme.primaryContainer,
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
         ) {
-            Column(Modifier.padding(20.dp)) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                horizontalAlignment = Alignment.Start,
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -131,15 +153,29 @@ internal fun DashboardScreen(refreshKey: Any? = Unit) {
                 ) {
                     Text(
                         text = stringResource(R.string.dashboard_average_f0),
+                        modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Start,
                     )
-                    TextButton(
+                    FilledTonalButton(
                         onClick = {
-                            store.clearRealtimeF0()
-                            data = data.copy(realtimeF0 = emptyList())
+                            val resetAtMillis = System.currentTimeMillis()
+                            store.resetAverageF0(resetAtMillis)
+                            data = data.copy(
+                                realtimeF0 = emptyList(),
+                                averageF0ResetAtMillis = resetAtMillis,
+                            )
                         },
-                        enabled = data.realtimeF0.isNotEmpty(),
+                        enabled = f0Sources.isNotEmpty(),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = if (darkTheme) {
+                                ResetContainerDark
+                            } else {
+                                ResetContainerLight
+                            },
+                            contentColor = if (darkTheme) ResetContentDark else ResetContentLight,
+                        ),
                     ) {
                         Text(stringResource(R.string.dashboard_reset))
                     }
@@ -147,17 +183,23 @@ internal fun DashboardScreen(refreshKey: Any? = Unit) {
                 Spacer(Modifier.height(6.dp))
                 Text(
                     text = averageF0?.let { "%.0f Hz".format(it) } ?: "--",
+                    modifier = Modifier.fillMaxWidth(),
                     style = MaterialTheme.typography.displayMedium,
                     fontWeight = FontWeight.Black,
+                    textAlign = TextAlign.Start,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = when {
-                        data.realtimeF0.isEmpty() -> stringResource(R.string.dashboard_no_realtime)
+                        f0Sources.isEmpty() -> stringResource(R.string.dashboard_no_realtime)
                         latestF0 == null -> stringResource(R.string.dashboard_no_valid_f0)
                         else -> stringResource(R.string.dashboard_latest_f0, latestF0)
                     },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 1.dp),
                     style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Start,
                 )
             }
         }
@@ -177,7 +219,7 @@ internal fun DashboardScreen(refreshKey: Any? = Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         } else {
-            data.analyses.take(20).forEachIndexed { index, entry ->
+            data.analyses.take(20).forEach { entry ->
                 AnalysisHistoryRow(
                     entry = entry,
                     onOpen = { selectedEntry = entry },
@@ -197,9 +239,6 @@ internal fun DashboardScreen(refreshKey: Any? = Unit) {
                         data = data.copy(analyses = store.analyses())
                     },
                 )
-                if (index != data.analyses.take(20).lastIndex) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                }
             }
         }
         Spacer(Modifier.height(20.dp))
@@ -212,6 +251,7 @@ private enum class AnalysisMetric(
     F0(R.string.dashboard_metric_f0),
     NATURALNESS(R.string.dashboard_metric_naturalness),
     STANDARD(R.string.dashboard_metric_standard),
+    COMPOSITE(R.string.dashboard_metric_composite),
 }
 
 @Composable
@@ -224,6 +264,7 @@ private fun AnalysisMetricSection(entries: List<AnalysisHistoryEntry>) {
             AnalysisMetric.F0 -> entry.meanF0Hz?.toFloat()
             AnalysisMetric.NATURALNESS -> entry.naturalnessScore.toFloat()
             AnalysisMetric.STANDARD -> entry.standardScore.toFloat()
+            AnalysisMetric.COMPOSITE -> entry.finalScore.toFloat()
         } ?: return@mapNotNull null
         AnalysisChartPoint(
             timestampMillis = entry.timestampMillis,
@@ -462,7 +503,10 @@ private fun AnalysisHistoryRow(
 ) {
     val density = LocalDensity.current
     val maxRevealPx = with(density) { 132.dp.toPx() }
+    val revealActivationPx = with(density) { 20.dp.toPx() }
     var offsetX by remember(entry.timestampMillis) { mutableFloatStateOf(0f) }
+    var accumulatedDragPx by remember(entry.timestampMillis) { mutableFloatStateOf(0f) }
+    var revealActivated by remember(entry.timestampMillis) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun settle() {
@@ -479,7 +523,8 @@ private fun AnalysisHistoryRow(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp)),
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(16.dp)),
     ) {
         Row(
             modifier = Modifier
@@ -517,18 +562,40 @@ private fun AnalysisHistoryRow(
                 .offset { IntOffset(offsetX.roundToInt(), 0) }
                 .pointerInput(entry.timestampMillis) {
                     detectHorizontalDragGestures(
-                        onDragEnd = { settle() },
-                        onDragCancel = { settle() },
+                        onDragStart = {
+                            accumulatedDragPx = 0f
+                            revealActivated = offsetX < 0f
+                        },
+                        onDragEnd = {
+                            revealActivated = false
+                            settle()
+                        },
+                        onDragCancel = {
+                            revealActivated = false
+                            settle()
+                        },
                         onHorizontalDrag = { change, dragAmount ->
                             change.consume()
-                            offsetX = (offsetX + dragAmount)
-                                .coerceIn(-maxRevealPx, 0f)
+                            if (revealActivated) {
+                                offsetX = (offsetX + dragAmount)
+                                    .coerceIn(-maxRevealPx, 0f)
+                            } else {
+                                accumulatedDragPx += dragAmount
+                                if (accumulatedDragPx <= -revealActivationPx) {
+                                    revealActivated = true
+                                    val adjustedDrag = accumulatedDragPx + revealActivationPx
+                                    offsetX = (offsetX + adjustedDrag)
+                                        .coerceIn(-maxRevealPx, 0f)
+                                    accumulatedDragPx = 0f
+                                }
+                            }
                         },
                     )
                 }
                 .clickable {
                     if (offsetX < 0f) settle() else onOpen()
                 },
+            shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.background,
         ) {
             AnalysisHistoryContent(entry)
@@ -586,7 +653,7 @@ private fun AnalysisHistoryContent(entry: AnalysisHistoryEntry) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 14.dp),
+            .padding(end = 14.dp, top = 14.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -616,6 +683,7 @@ private fun AnalysisHistoryContent(entry: AnalysisHistoryEntry) {
                 color = MaterialTheme.colorScheme.primary,
             )
         }
+        Spacer(Modifier.width(8.dp))
         Text(
             text = "%.1f".format(entry.finalScore),
             style = MaterialTheme.typography.headlineSmall,

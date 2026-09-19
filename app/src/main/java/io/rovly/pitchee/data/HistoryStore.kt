@@ -53,6 +53,8 @@ class HistoryStore(context: Context) {
             )
         }.filter { it.meanF0Hz.isFinite() }.sortedByDescending { it.timestampMillis }
 
+    fun averageF0ResetAtMillis(): Long = preferences.getLong(KEY_AVERAGE_F0_RESET_AT, 0L)
+
     fun addAnalysis(
         entry: AnalysisHistoryEntry,
         result: PitcheeResult,
@@ -84,7 +86,7 @@ class HistoryStore(context: Context) {
 
     fun analysisAudioFile(entry: AnalysisHistoryEntry): File? =
         entry.audioFileName?.let { File(File(appContext.filesDir, ANALYSIS_DIRECTORY), it) }
-            ?.takeIf { it.isFile }
+            ?.takeIf { it.isFile && it.length() > 0L }
 
     fun analysisResult(entry: AnalysisHistoryEntry): PitcheeResult? =
         entry.resultFileName
@@ -123,8 +125,11 @@ class HistoryStore(context: Context) {
         )
     }
 
-    fun clearRealtimeF0() {
-        preferences.edit().remove(KEY_REALTIME_F0).apply()
+    fun resetAverageF0(resetAtMillis: Long) {
+        preferences.edit()
+            .putLong(KEY_AVERAGE_F0_RESET_AT, resetAtMillis)
+            .remove(KEY_REALTIME_F0)
+            .apply()
     }
 
     fun addRealtimeF0(entry: RealtimeF0HistoryEntry) {
@@ -174,6 +179,7 @@ class HistoryStore(context: Context) {
         const val PREFERENCES_NAME = "history"
         const val KEY_ANALYSES = "analyses"
         const val KEY_REALTIME_F0 = "realtime_f0"
+        const val KEY_AVERAGE_F0_RESET_AT = "average_f0_reset_at"
         const val ANALYSIS_DIRECTORY = "analysis_history"
         const val MAX_ENTRIES = 100
     }
