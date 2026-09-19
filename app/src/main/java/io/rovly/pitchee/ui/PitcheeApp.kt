@@ -83,8 +83,6 @@ private enum class PitcheeDestination(
     SCORE_RULES(R.string.nav_score_test, R.drawable.ic_model_analysis),
 }
 
-private class DashboardScrollPosition(var value: Int = 0)
-
 @Preview
 @Composable
 fun PitcheeApp() {
@@ -233,8 +231,7 @@ fun PitcheeApp() {
             when (destinations[selectedIndex]) {
                 PitcheeDestination.DASHBOARD -> DashboardScreen(
                     refreshKey = selectedIndex,
-                    initialScrollPosition = dashboardScrollPosition.value,
-                    onScrollPositionChange = { dashboardScrollPosition.value = it },
+                    scrollPosition = dashboardScrollPosition,
                 )
                 PitcheeDestination.PITCH -> RealtimePitchScreen()
                 PitcheeDestination.ANALYSIS -> RecordAnalysisScreen()

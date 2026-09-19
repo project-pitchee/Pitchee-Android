@@ -687,7 +687,7 @@ private fun BasicWaveform(
         val viewportStart = positionSeconds - windowSeconds / 2.0
         val viewportEnd = viewportStart + windowSeconds
         val centerY = size.height / 2f
-        val targetBarSpacingPx = 3.dp.toPx()
+        val targetBarSpacingPx = 2.dp.toPx()
         val targetBarCount = (size.width / targetBarSpacingPx)
             .roundToInt()
             .coerceAtLeast(1)

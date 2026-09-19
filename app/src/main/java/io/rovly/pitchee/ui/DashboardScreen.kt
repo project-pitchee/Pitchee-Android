@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,9 +28,10 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
@@ -40,7 +42,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -91,19 +92,29 @@ private val ResetContentLight = Color(0xFF6B343A)
 private val ResetContainerDark = Color(0xFF493034)
 private val ResetContentDark = Color(0xFFF0C8CC)
 
+internal class DashboardScrollPosition {
+    var firstVisibleItemIndex: Int = 0
+    var firstVisibleItemScrollOffset: Int = 0
+}
+
 @Composable
 internal fun DashboardScreen(
     refreshKey: Any? = Unit,
-    initialScrollPosition: Int = 0,
-    onScrollPositionChange: (Int) -> Unit = {},
+    scrollPosition: DashboardScrollPosition,
 ) {
     val context = LocalContext.current
     val store = remember(context) { HistoryStore(context) }
     var data by remember { mutableStateOf(DashboardData()) }
     var selectedEntry by remember { mutableStateOf<AnalysisHistoryEntry?>(null) }
-    val scrollState = rememberScrollState()
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = scrollPosition.firstVisibleItemIndex,
+        initialFirstVisibleItemScrollOffset = scrollPosition.firstVisibleItemScrollOffset,
+    )
     var scrollPositionRestored by remember {
-        mutableStateOf(initialScrollPosition <= 0)
+        mutableStateOf(
+            scrollPosition.firstVisibleItemIndex == 0 &&
+                scrollPosition.firstVisibleItemScrollOffset == 0,
+        )
     }
 
     LaunchedEffect(refreshKey) {
@@ -114,24 +125,25 @@ internal fun DashboardScreen(
         )
     }
 
-    LaunchedEffect(
-        data.realtimeF0,
-        data.analyses,
-        initialScrollPosition,
-        scrollPositionRestored,
-    ) {
+    LaunchedEffect(data.realtimeF0, data.analyses, scrollPositionRestored) {
         if (!scrollPositionRestored && (data.realtimeF0.isNotEmpty() || data.analyses.isNotEmpty())) {
-            snapshotFlow { scrollState.maxValue }
-                .first { it >= initialScrollPosition || it > 0 }
-            scrollState.scrollTo(initialScrollPosition.coerceAtMost(scrollState.maxValue))
+            snapshotFlow { listState.layoutInfo.totalItemsCount }
+                .first { it >= scrollPosition.firstVisibleItemIndex || it > 0 }
+            listState.scrollToItem(
+                index = scrollPosition.firstVisibleItemIndex.coerceAtLeast(0),
+                scrollOffset = scrollPosition.firstVisibleItemScrollOffset.coerceAtLeast(0),
+            )
             scrollPositionRestored = true
         }
     }
 
-    LaunchedEffect(scrollState, scrollPositionRestored) {
+    LaunchedEffect(listState, scrollPositionRestored) {
         if (!scrollPositionRestored) return@LaunchedEffect
-        snapshotFlow { scrollState.value }.collect { value ->
-            onScrollPositionChange(value)
+        snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }.collect { (index, offset) ->
+            scrollPosition.firstVisibleItemIndex = index
+            scrollPosition.firstVisibleItemScrollOffset = offset
         }
     }
 
@@ -186,126 +198,157 @@ internal fun DashboardScreen(
                 onBack = { selectedEntry = null },
             )
         } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(scrollState)
-                    .padding(horizontal = 20.dp, vertical = 24.dp),
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background,
             ) {
-        Text(
-            text = stringResource(R.string.dashboard_title),
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-        )
-        Spacer(Modifier.height(20.dp))
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        ) {
-            Column(
-                modifier = Modifier.padding(20.dp),
-                horizontalAlignment = Alignment.Start,
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    state = listState,
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
                 ) {
-                    Text(
-                        text = stringResource(R.string.dashboard_average_f0),
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.Start,
-                    )
-                    FilledTonalButton(
-                        onClick = {
-                            val resetAtMillis = System.currentTimeMillis()
-                            store.resetAverageF0(resetAtMillis)
-                            data = data.copy(
-                                realtimeF0 = emptyList(),
-                                averageF0ResetAtMillis = resetAtMillis,
+                    item(key = "dashboard-header") {
+                        Text(
+                            text = stringResource(R.string.dashboard_title),
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(Modifier.height(20.dp))
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.large,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(20.dp),
+                                horizontalAlignment = Alignment.Start,
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.dashboard_average_f0),
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        textAlign = TextAlign.Start,
+                                    )
+                                    FilledTonalButton(
+                                        onClick = {
+                                            val resetAtMillis = System.currentTimeMillis()
+                                            store.resetAverageF0(resetAtMillis)
+                                            data = data.copy(
+                                                realtimeF0 = emptyList(),
+                                                averageF0ResetAtMillis = resetAtMillis,
+                                            )
+                                        },
+                                        enabled = f0Sources.isNotEmpty(),
+                                        colors = ButtonDefaults.filledTonalButtonColors(
+                                            containerColor = if (darkTheme) {
+                                                ResetContainerDark
+                                            } else {
+                                                ResetContainerLight
+                                            },
+                                            contentColor = if (darkTheme) {
+                                                ResetContentDark
+                                            } else {
+                                                ResetContentLight
+                                            },
+                                        ),
+                                    ) {
+                                        Text(stringResource(R.string.dashboard_reset))
+                                    }
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    text = averageF0?.let { "%.0f Hz".format(it) } ?: "--",
+                                    modifier = Modifier.fillMaxWidth(),
+                                    style = MaterialTheme.typography.displayMedium,
+                                    fontWeight = FontWeight.Black,
+                                    textAlign = TextAlign.Start,
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = when {
+                                        f0Sources.isEmpty() -> {
+                                            stringResource(R.string.dashboard_no_realtime)
+                                        }
+                                        latestF0 == null -> {
+                                            stringResource(R.string.dashboard_no_valid_f0)
+                                        }
+                                        else -> {
+                                            stringResource(R.string.dashboard_latest_f0, latestF0)
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 1.dp),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    textAlign = TextAlign.Start,
+                                )
+                            }
+                        }
+                    }
+                    item(key = "dashboard-metrics") {
+                        Spacer(Modifier.height(24.dp))
+                        AnalysisMetricSection(entries = data.analyses)
+                        Spacer(Modifier.height(28.dp))
+                        Text(
+                            text = stringResource(R.string.dashboard_analysis_history),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                    }
+                    if (data.analyses.isEmpty()) {
+                        item(key = "dashboard-empty") {
+                            Text(
+                                text = stringResource(R.string.dashboard_no_analysis),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                        },
-                        enabled = f0Sources.isNotEmpty(),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = if (darkTheme) {
-                                ResetContainerDark
-                            } else {
-                                ResetContainerLight
-                            },
-                            contentColor = if (darkTheme) ResetContentDark else ResetContentLight,
-                        ),
-                    ) {
-                        Text(stringResource(R.string.dashboard_reset))
+                        }
+                    } else {
+                        items(
+                            items = data.analyses.take(20),
+                            key = { it.timestampMillis },
+                        ) { historyEntry ->
+                            AnalysisHistoryRow(
+                                entry = historyEntry,
+                                onOpen = { selectedEntry = historyEntry },
+                                onDelete = {
+                                    store.removeAnalysis(historyEntry.timestampMillis)
+                                    data = data.copy(
+                                        analyses = data.analyses.filterNot {
+                                            it.timestampMillis == historyEntry.timestampMillis
+                                        },
+                                    )
+                                },
+                                onPin = {
+                                    store.setAnalysisPinned(
+                                        timestampMillis = historyEntry.timestampMillis,
+                                        pinned = !historyEntry.pinned,
+                                    )
+                                    data = data.copy(analyses = store.analyses())
+                                },
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = null,
+                                    placementSpec = spring(
+                                        dampingRatio = 0.78f,
+                                        stiffness = 260f,
+                                    ),
+                                    fadeOutSpec = null,
+                                ),
+                            )
+                        }
+                    }
+                    item(key = "dashboard-bottom") {
+                        Spacer(Modifier.height(20.dp))
                     }
                 }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = averageF0?.let { "%.0f Hz".format(it) } ?: "--",
-                    modifier = Modifier.fillMaxWidth(),
-                    style = MaterialTheme.typography.displayMedium,
-                    fontWeight = FontWeight.Black,
-                    textAlign = TextAlign.Start,
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = when {
-                        f0Sources.isEmpty() -> stringResource(R.string.dashboard_no_realtime)
-                        latestF0 == null -> stringResource(R.string.dashboard_no_valid_f0)
-                        else -> stringResource(R.string.dashboard_latest_f0, latestF0)
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 1.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Start,
-                )
-            }
-        }
-        Spacer(Modifier.height(24.dp))
-        AnalysisMetricSection(entries = data.analyses)
-        Spacer(Modifier.height(28.dp))
-        Text(
-            text = stringResource(R.string.dashboard_analysis_history),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-        )
-        Spacer(Modifier.height(10.dp))
-        if (data.analyses.isEmpty()) {
-            Text(
-                text = stringResource(R.string.dashboard_no_analysis),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
-            data.analyses.take(20).forEach { entry ->
-                key(entry.timestampMillis) {
-                    AnalysisHistoryRow(
-                        entry = entry,
-                        onOpen = { selectedEntry = entry },
-                        onDelete = {
-                            store.removeAnalysis(entry.timestampMillis)
-                            data = data.copy(
-                                analyses = data.analyses.filterNot {
-                                    it.timestampMillis == entry.timestampMillis
-                                },
-                            )
-                        },
-                        onPin = {
-                            store.setAnalysisPinned(
-                                timestampMillis = entry.timestampMillis,
-                                pinned = !entry.pinned,
-                            )
-                            data = data.copy(analyses = store.analyses())
-                        },
-                    )
-                }
-            }
-        }
-                Spacer(Modifier.height(20.dp))
             }
         }
     }
@@ -568,6 +611,7 @@ private fun AnalysisHistoryRow(
     onOpen: () -> Unit,
     onDelete: () -> Unit,
     onPin: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
     val maxRevealPx = with(density) { 132.dp.toPx() }
@@ -599,7 +643,7 @@ private fun AnalysisHistoryRow(
     }
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .clip(RoundedCornerShape(16.dp)),
